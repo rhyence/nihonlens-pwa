@@ -1,4 +1,4 @@
-export const defaults = { php: '0.40' };
+export const defaults = { php: '0.40', theme: 'dark' as 'dark' | 'light' };
 export type Settings = typeof defaults;
 
 let database: Promise<IDBDatabase> | undefined;
@@ -21,7 +21,8 @@ export async function loadSettings(): Promise<Settings> {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    return { php: settings?.php?.trim() ? settings.php : defaults.php };
+    return { php: settings?.php?.trim() ? settings.php : defaults.php,
+      theme: settings?.theme === 'light' ? 'light' : 'dark' };
   } catch {
     return defaults;
   }

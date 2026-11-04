@@ -139,7 +139,9 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }, []);
 
   useEffect(() => {
-    if (settings !== initialSettings) void saveSettings(settings).catch(() => setError('Could not save the exchange rate.'));
+    document.documentElement.dataset.theme = settings.theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', settings.theme === 'dark' ? '#101a17' : '#f4f6f2');
+    if (settings !== initialSettings) void saveSettings(settings).catch(() => setError('Could not save your preferences.'));
   }, [settings, initialSettings]);
 
   useEffect(() => {
@@ -212,7 +214,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }
 
   return <main>
-    <header className="app-header"><div className="brand"><span className="brand-mark" aria-hidden="true">¥</span><div><h1>NihonLens</h1><p>Your pocket price companion</p></div></div><span className="country-pair">JP <span aria-hidden="true">↔</span> PH</span></header>
+    <header className="app-header"><div className="brand"><span className="brand-mark" aria-hidden="true">¥</span><div><h1>NihonLens</h1><p>Your pocket price companion</p></div></div><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀ Light' : '☾ Dark'}</button></header>
     <div className="section-heading"><h2>Point. Scan. Convert.</h2><span>Yen to pesos</span></div>
     <div className="camera-card">
     <section className="view" ref={preview} aria-label="Camera preview">
@@ -255,7 +257,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ₱${rate}` : 'Needs attention'}</span></summary>
       <div className="settings">
-      <label>PHP per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings({ php: event.target.value })} /></label>
+      <label>PHP per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings(previous => ({ ...previous, php: event.target.value }))} /></label>
       <small>{validRate ? 'This is a manual rate. Edit it whenever you need to.' : 'Enter a positive PHP amount for ¥1.'}</small>
       </div>
     </details>
