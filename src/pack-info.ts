@@ -1,11 +1,12 @@
 const revision = '05470cd69b62aa32e3ee64ccfd41279789ee4b1e';
 const model = 'https://huggingface.co/onnx-community/opus-mt-ja-en/resolve/' + revision + '/';
 const tess = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/';
-export const packVersion = 'marian-05470cd-ocr410-runtime1';
+export const packVersion = 'marian-05470cd-ocr410-runtime2';
+export const runtimeChunkBytes = 1_048_576;
 export const packCache = 'nihonlens-pack-' + packVersion;
 export const packPath = '/__pack/' + packVersion + '/';
 
-type Asset = { path: string; url: string; bytes: number; sha256: string; type: string };
+type Asset = { path: string; url: string; bytes: number; sha256: string; type: string; split?: boolean };
 
 function asset(directory: string, source: string, file: string, bytes: number, sha256: string, query = ''): Asset {
   const type = file.endsWith('.json') ? 'application/json' : file.endsWith('.wasm') ? 'application/wasm' :
@@ -34,6 +35,6 @@ export const packAssets = [
   runtime('worker.min.js', 111162, '38645599043239c0eb6db08a6504a92dcdc292200535f3e9339cd77c4443b842'),
   runtime('tesseract-core-lstm.wasm.js', 3954181, '775a35df6f2ae100e02609443e6bd5cafcd07983dd6175454ca4a432a7730687'),
   runtime('ort-wasm-simd-threaded.jsep.mjs', 44484, '08fb86ec433c78bfb032c5d84a68b8e8e5a8d81268fa39e24314179a5767a5b9'),
-  runtime('ort-wasm-simd-threaded.jsep.wasm', 21596019, 'c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39'),
+  { ...runtime('ort-wasm-simd-threaded.jsep.wasm', 21596019, 'c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39'), split: true },
 ];
 export const packBytes = packAssets.reduce((sum, asset) => sum + asset.bytes, 0);

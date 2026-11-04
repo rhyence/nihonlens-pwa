@@ -25,7 +25,7 @@ Workbox precaches the app shell separately. Its cache-only route serves model as
 | [Tesseract tessdata_fast 4.1.0](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0) | 2,471,260-byte `jpn` and 3,037,480-byte `jpn_vert` trained data | Apache 2.0 |
 | Browser runtimes | Tesseract.js 6.0.1 worker and core, Transformers.js 3.8.1 and its pinned ONNX Runtime Web WASM runtime | See dependency license files |
 
-The pack is about 271 MB. Vercel serves the app, OCR worker, and WASM runtime from the same origin. The larger weights and tokenizer are distributed from Hugging Face and the OCR data from GitHub on explicit download. These are public asset requests. Inference sends no text or images to either host. This keeps the 182 MB decoder out of Git and the Vercel deployment bundle. If a distribution host is blocked, the download fails visibly and the user can retry when it is reachable. The manifest, content sizes and integrity hashes are in `src/pack-info.ts`.
+The pack is about 271 MB. Vercel serves the app, OCR worker, and WASM runtime from the same origin. The build splits the WASM runtime into 1 MiB pieces and compresses each piece. The app reassembles the original binary and verifies its hash before caching it. The larger weights and tokenizer are distributed from Hugging Face and the OCR data from GitHub on explicit download. These are public asset requests. Inference sends no text or images to either host. This keeps the 182 MB decoder out of Git and the Vercel deployment bundle. If a distribution host is blocked, the download fails visibly and the user can retry when it is reachable. The manifest, content sizes and integrity hashes are in `src/pack-info.ts`.
 
 ## Browser tests
 

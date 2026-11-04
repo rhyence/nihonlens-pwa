@@ -1,6 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
-import { packAssets, packBytes, packCache, packPath } from './pack-info';
+import { packAssets, packBytes, packCache, packPath, runtimeChunkBytes } from './pack-info';
 
 const marker = packPath + 'complete.json';
 
@@ -85,6 +85,40 @@ async function fetchAsset(url: string, path: string, signal: AbortSignal, retryi
     await new Promise<void>(resolve => setTimeout(resolve, attempt * 700));
   }
 }
+
+function splitRuntime(asset: typeof packAssets[number], signal: AbortSignal, retrying: (attempt: number) => void) {
+  const chunks = Math.ceil(asset.bytes / runtimeChunkBytes);
+  let next = 0;
+
+  async function getChunk(index: number) {
+    const bytes = Math.min(runtimeChunkBytes, asset.bytes - index * runtimeChunkBytes);
+    const suffix = '.' + index + '.bin';
+    const path = asset.path + suffix;
+    for (let attempt = 1; ; attempt++) {
+      signal.throwIfAborted();
+      try {
+        const body = await fetchAsset(asset.url + suffix, path, signal, retrying);
+        const data = new Uint8Array(await new Response(body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+        if (data.length === bytes) return data;
+        throw new Error('Incorrect runtime chunk size: ' + path);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (!(error instanceof TypeError) || attempt === 3) throw error;
+        retrying(attempt + 1);
+      }
+    }
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const end = Math.min(chunks, next + 3);
+      const batch = Array.from({ length: end - next }, (_, index) => getChunk(next + index));
+      for (const chunk of await Promise.all(batch)) controller.enqueue(chunk);
+      next = end;
+      if (next === chunks) controller.close();
+    },
+  });
+}
 export async function downloadPack(progress: (message: string) => void, signal: AbortSignal) {
   await controlled();
   await exclusive(async () => {
@@ -99,8 +133,9 @@ export async function downloadPack(progress: (message: string) => void, signal: 
         const report = (bytes: number) => progress('Downloading file ' + (index + 1) + '/' + packAssets.length +
           ' · ' + ((saved + bytes) / 1e6).toFixed(1) + '/' + (packBytes / 1e6).toFixed(1) + ' MB');
         report(0);
-        const body = await fetchAsset(asset.url, asset.path, signal, attempt =>
-          progress('Retrying file ' + (index + 1) + '/' + packAssets.length + ' · attempt ' + attempt + '/3'));
+        const retrying = (attempt: number) =>
+          progress('Retrying file ' + (index + 1) + '/' + packAssets.length + ' · attempt ' + attempt + '/3');
+        const body = asset.split ? splitRuntime(asset, signal, retrying) : await fetchAsset(asset.url, asset.path, signal, retrying);
         report(0);
         let bytes = 0;
         const hash = sha256.create();
