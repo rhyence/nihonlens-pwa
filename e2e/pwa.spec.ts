@@ -67,10 +67,16 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   });
   expect(retiredAssets).toBe(false);
   await page.getByRole('button', { name: 'Start camera' }).click();
+  await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+  await expect(page.getByLabel('Frozen camera frame')).toBeVisible();
   await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
+  await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Detected prices' })).toContainText('¥1,280 → ₱512.00');
   await page.getByLabel('PHP per JPY').fill('0.50');
   await expect(page.locator('.overlay')).toHaveText('₱640.00');
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(page.getByLabel('Frozen camera frame')).toBeHidden();
+  await expect(page.locator('.overlay')).toHaveText('₱640.00', { timeout: 25_000 });
   await page.getByRole('button', { name: 'Stop camera' }).click();
   await expect(page.locator('.overlay')).toHaveCount(0);
 });

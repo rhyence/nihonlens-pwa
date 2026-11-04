@@ -14,12 +14,16 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [camera, setCamera] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [view, setView] = useState({ w: 0, h: 0 });
   const [source, setSource] = useState({ w: 0, h: 0 });
   const video = useRef<HTMLVideoElement>(null);
+  const still = useRef<HTMLCanvasElement>(null);
   const preview = useRef<HTMLDivElement>(null);
   const stream = useRef<MediaStream | undefined>(undefined);
   const engine = useRef<Engines | undefined>(undefined);
@@ -74,6 +78,28 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     tracker.current.clear();
     setTracks([]);
     setCamera(false);
+    setFrozen(false);
+    setScanning(false);
+    setScanned(false);
+  }
+
+  function toggleFreeze() {
+    const frame = video.current;
+    if (!frame?.videoWidth || !still.current) return;
+    gate.current.invalidate();
+    tracker.current.clear();
+    setTracks([]);
+    setScanned(false);
+    if (!frozen) {
+      const scale = Math.min(1, 960 / Math.max(frame.videoWidth, frame.videoHeight));
+      still.current.width = Math.round(frame.videoWidth * scale);
+      still.current.height = Math.round(frame.videoHeight * scale);
+      still.current.getContext('2d')!.drawImage(frame, 0, 0, still.current.width, still.current.height);
+      frame.pause();
+    } else {
+      void frame.play().catch(() => stopCamera());
+    }
+    setFrozen(!frozen);
   }
 
   async function startCamera() {
@@ -120,23 +146,32 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     const context = canvas.getContext('2d')!;
     const frameGate = gate.current;
     let active = true;
+    let highDetail = false;
     let timer: ReturnType<typeof setTimeout>;
     const scan = async () => {
       const frame = video.current;
       const ocr = engine.current;
       if (document.visibilityState === 'visible' && frame?.videoWidth &&
           frame.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && ocr) {
-        const { videoWidth: w, videoHeight: h } = frame;
-        const scale = Math.min(1, 960 / Math.max(w, h));
+        const image = frozen ? still.current! : frame;
+        const w = frozen ? still.current!.width : frame.videoWidth;
+        const h = frozen ? still.current!.height : frame.videoHeight;
+        const scale = Math.min(1, (frozen || highDetail ? 960 : 640) / Math.max(w, h));
+        let completed = false;
         try {
           await frameGate.run(async () => {
+            if (active) setScanning(true);
             canvas.width = Math.round(w * scale);
             canvas.height = Math.round(h * scale);
-            context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
             return yenReadings(await ocr.read(canvas));
           }, readings => {
+            if (!readings.length) highDetail = !highDetail;
             setSource({ w, h });
-            setTracks(tracker.current.update(readings, performance.now()));
+            setTracks(tracker.current.update(readings, performance.now(), 1));
+            setScanning(false);
+            setScanned(true);
+            completed = true;
           });
         } catch (failure) {
           stopCamera();
@@ -144,10 +179,12 @@ function App({ initialSettings }: { initialSettings: Settings }) {
           setStatus('Scanner stopped. Verify it to try again.');
           setError(String(failure));
         }
+        if (frozen && completed) return;
       }
-      if (active) timer = setTimeout(scan, 650);
+      if (active) timer = setTimeout(scan, 150);
     };
     const visibility = () => {
+      if (frozen) return;
       frameGate.invalidate();
       tracker.current.clear();
       setTracks([]);
@@ -160,7 +197,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [camera, ready]);
+  }, [camera, ready, frozen]);
 
   const rate = settings.php;
   const validRate = /^\d{0,8}(?:\.\d{1,10})?$/.test(rate) && Number(rate) > 0;
@@ -174,6 +211,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     <header><p className="eyebrow">OFFLINE YEN PRICE SCANNER</p><h1>NihonLens</h1><p>Hold your camera over a yen price to see it in Philippine pesos.</p></header>
     <section className="view" ref={preview} aria-label="Camera preview">
       <video ref={video} muted playsInline />
+      <canvas ref={still} className="frozen-preview" style={{ display: frozen ? 'block' : 'none', objectFit: 'cover' }} aria-label="Frozen camera frame" />
       {!camera && <p className="hint">Start the camera and point it at a price such as ¥500 or 500円.</p>}
       {camera && view.w > 8 && source.w > 0 && tracks.map(track => {
         const price = display(track);
@@ -189,8 +227,9 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <button disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
         {camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}
       </button>
+      {camera && <button onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
     </div>
-    {camera && <p>{tracks.length ? 'Yen prices found' : 'Hold steady with the yen symbol or 円 in view…'}</p>}
+    {camera && <p aria-live="polite">{frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Resume and move closer to the price.') : 'Scanning frozen photo… You can put your phone down.') : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.'}</p>}
     {tracks.length > 0 && <section className="panel" aria-label="Detected prices">
       <h2>Detected prices</h2>
       <ul>{tracks.map(track => <li key={track.id}>{track.text}{display(track) && <> → {display(track)}</>}</li>)}</ul>

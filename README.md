@@ -1,6 +1,6 @@
 # NihonLens
 
-NihonLens is an offline Japanese yen price scanner and Philippine peso converter. Start the camera and hold an explicit price such as ¥500 or 500円 in view. The app shows the peso amount after the same price appears in consecutive scans. Use the manual converter to enter pesos and see the equivalent in yen.
+NihonLens is an offline Japanese yen price scanner and Philippine peso converter. Start the camera and hold an explicit price such as ¥500 or 500円 in view. The app shows the peso amount after one scan. Tap Freeze to capture a still photo immediately and put the phone down while recognition finishes; Resume returns to live scanning. Live scanning starts at 640 pixels on the longest side and retries at 960 if no prices are found. Frozen photos use 960 pixels for smaller print. Use the manual converter to enter pesos and see the equivalent in yen.
 
 The rate starts at ₱0.40 per ¥1. It is editable, stored on the device, and never fetched from a rates service. Camera frames stay on the device. NihonLens downloads only the Japanese OCR data and its browser runtime, about 7 MB in total. The old pack’s verified OCR files can be reused on upgrade.
 

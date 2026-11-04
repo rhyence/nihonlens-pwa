@@ -65,7 +65,7 @@ function overlap(a: Box, b: Box) {
 export class Tracker {
   private tracks: Track[] = [];
   private id = 0;
-  update(readings: Reading[], now: number) {
+  update(readings: Reading[], now: number, minimumHits = 2) {
     const unmatched = this.tracks.filter(track => now - track.seen < 3200);
     const active = readings.map(reading => {
       const index = unmatched.findIndex(track => overlap(track.box, reading.box) > 0.3 && track.text === reading.text);
@@ -76,7 +76,7 @@ export class Tracker {
       return { ...reading, box, id: old.id, seen: now, hits: old.hits + 1 };
     });
     this.tracks = [...active, ...unmatched].slice(0, 40);
-    return this.tracks.filter(track => track.hits >= 2);
+    return this.tracks.filter(track => track.hits >= minimumHits);
   }
   clear() { this.tracks = []; }
 }

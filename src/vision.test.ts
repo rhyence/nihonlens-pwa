@@ -54,6 +54,13 @@ it('smooths, retains briefly and expires a stable overlay', () => {
   expect(tracker.update([], 4100)).toEqual([]);
 });
 
+it('shows a price on the first scan even when recognition takes longer than track expiry', () => {
+  const tracker = new Tracker();
+  const price = { text: '¥1,280', box: { x: 0.1, y: 0.2, w: 0.3, h: 0.1 } };
+  expect(tracker.update([price], 0, 1)).toHaveLength(1);
+  expect(tracker.update([price], 15000, 1)).toHaveLength(1);
+});
+
 it('maps the center through aspect-fill cropping', () => {
   expect(fill({ x: 0.5, y: 0.5, w: 0.1, h: 0.1 }, 1920, 1080, 360, 640))
     .toMatchObject({ x: 180, y: 320, h: 64 });
