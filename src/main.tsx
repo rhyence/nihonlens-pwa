@@ -27,6 +27,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [view, setView] = useState({ w: 0, h: 0 });
   const [source, setSource] = useState({ w: 0, h: 0 });
   const video = useRef<HTMLVideoElement>(null);
+  const premium = useRef<HTMLDialogElement>(null);
   const still = useRef<HTMLCanvasElement>(null);
   const preview = useRef<HTMLDivElement>(null);
   const stream = useRef<MediaStream | undefined>(undefined);
@@ -254,6 +255,16 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <div className="conversion-result"><span>In Japanese yen</span><output aria-label="Amount in yen" aria-live="polite">{manual ?? '¥—'}</output></div></>}
       <small className="rate-note">{validRate ? `¥1 = ₱${rate} · Your saved rate` : 'Set a positive exchange rate below to convert.'}</small>
     </section>
+    <button className="translator-button" onClick={() => premium.current?.showModal()}><span>Japanese text → English translator</span><span className="premium-tag">PREMIUM</span></button>
+    <dialog ref={premium} className="premium-dialog" aria-labelledby="premium-title" aria-describedby="premium-description">
+      <button className="premium-close" aria-label="Close premium popup" onClick={() => premium.current?.close()}>×</button>
+      <span className="premium-tag">NIHONLENS PREMIUM</span>
+      <h2 id="premium-title">Lost in translation?</h2>
+      <p id="premium-description">Japanese text to English translation is a premium feature.</p>
+      <p className="premium-price">₱999<span> / month</span></p>
+      <p>Unlock a whole new world of understanding.</p>
+      <small className="prank-note">It’s a prank. No payments are collected.</small>
+    </dialog>
     {tracks.length > 0 && <section className="panel" aria-label="Detected prices">
       <h2>Detected prices</h2>
       <ul>{tracks.map(track => <li key={track.id}>{track.text}{display(track) && <> → {display(track)}</>}</li>)}</ul>
