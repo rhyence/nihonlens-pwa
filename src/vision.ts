@@ -21,8 +21,8 @@ export function convert(amount: bigint, rate: string, code: string) {
   return code + ' ' + (cents / 100n).toLocaleString('en-US') + '.' + String(cents % 100n).padStart(2, '0');
 }
 
-export function fill(box: Box, sourceW: number, sourceH: number, viewW: number, viewH: number): Box {
-  const scale = Math.max(viewW / sourceW, viewH / sourceH);
+export function fill(box: Box, sourceW: number, sourceH: number, viewW: number, viewH: number, fit: 'cover' | 'contain' = 'cover'): Box {
+  const scale = (fit === 'contain' ? Math.min : Math.max)(viewW / sourceW, viewH / sourceH);
   return { x: box.x * sourceW * scale + (viewW - sourceW * scale) / 2,
     y: box.y * sourceH * scale + (viewH - sourceH * scale) / 2,
     w: box.w * sourceW * scale, h: box.h * sourceH * scale };

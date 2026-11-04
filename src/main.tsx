@@ -36,6 +36,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [frozen, setFrozen] = useState(false);
   const [scanMessage, setScanMessage] = useState('');
   const still = useRef<HTMLCanvasElement | undefined>(undefined);
+  const frozenPreview = useRef<HTMLCanvasElement>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selected, setSelected] = useState<Track>();
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -249,7 +250,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         setScanMessage('The camera is still starting. Wait for the preview, then tap again.');
         return;
       }
-      const frame = document.createElement('canvas');
+      const frame = frozenPreview.current!;
       const scale = Math.min(1, 960 / Math.max(element.videoWidth, element.videoHeight));
       frame.width = Math.round(element.videoWidth * scale);
       frame.height = Math.round(element.videoHeight * scale);
@@ -275,11 +276,12 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   return <main>
     <header><p className="eyebrow">ON-DEVICE JAPANESE CAMERA</p><h1>NihonLens</h1><p>Translate signs and convert yen prices as you look.</p></header>
     <section className="view" ref={preview} aria-label="Camera preview">
-      <video ref={video} muted playsInline />
+      <video ref={video} muted playsInline hidden={frozen} />
+      <canvas ref={frozenPreview} className="frozen-preview" hidden={!frozen} aria-label="Frozen camera frame" />
       {!camera && <p className="hint">Start the camera to scan Japanese text.</p>}
       {source.w > 0 && size.w > 0 && tracks.map(track => {
         const value = label(track);
-        const box = fill(track.box, source.w, source.h, size.w, size.h);
+        const box = fill(track.box, source.w, source.h, size.w, size.h, frozen ? 'contain' : 'cover');
         if (!value || box.x + box.w < 0 || box.y + box.h < 0 || box.x > size.w || box.y > size.h) return null;
         return <button className="overlay" key={track.id} style={{ left: Math.max(0, Math.min(size.w - 100, box.x)),
           top: Math.max(0, Math.min(size.h - 46, box.y + box.h)), maxWidth: Math.max(100, size.w - Math.max(0, box.x)) }}
@@ -297,6 +299,13 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <button onClick={() => { setMobileTranslation(true); setInterrupted(false); setNotice(''); }}>
         Translate this frame
       </button>}
+    {frozen && tracks.length > 0 && <section className="panel" aria-label="Scan results">
+      <h2>Scan results</h2>
+      <ul>{tracks.map(track => <li key={track.id}>
+        <span lang="ja">{track.text}</span>
+        {label(track) !== track.text && <div>{label(track)}</div>}
+      </li>)}</ul>
+    </section>}
     {selected && <aside><strong>Original Japanese</strong><p lang="ja">{selected.text}</p><button onClick={() => setSelected(undefined)}>Close</button></aside>}
     {notice && <p role="alert">{notice}</p>}
     <section className="panel">

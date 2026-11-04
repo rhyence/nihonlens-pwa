@@ -85,6 +85,7 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await page.reload();
     await expect(page.getByRole('status')).toHaveText(/Offline OCR ready/, { timeout: 90_000 });
     await expect(page.getByLabel('English translation')).not.toBeChecked();
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.getByLabel('PHP per JPY').fill('0.40');
     await page.getByRole('button', { name: 'Start camera' }).click();
     await expect(page.locator('.overlay')).toHaveCount(0);
@@ -95,9 +96,11 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await expect(page.locator('.overlay').filter({ hasText: /こ\s*ん\s*に\s*ち\s*は/ })).toBeVisible();
     await page.getByRole('button', { name: 'Translate this frame' }).click();
     await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 80_000 });
+    await expect(page.getByRole('region', { name: 'Scan results' })).toContainText(/hello/i);
+    await expect(page.locator('canvas.frozen-preview')).toBeVisible();
     await page.getByRole('button', { name: 'PHP 512.00' }).click();
     await expect(page.getByText('Original Japanese')).toBeVisible();
-    await expect(page.locator('[lang=ja]')).toHaveText(/1,280\s*円/);
+    await expect(page.locator('aside [lang=ja]')).toHaveText(/1,280\s*円/);
     await page.getByLabel('English translation').uncheck();
     await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toHaveCount(0);
     await page.getByLabel('PHP per JPY').fill('0.50');
