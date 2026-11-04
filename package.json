@@ -1,0 +1,30 @@
+{
+  "name": "nihonlens-pwa",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "prebuild": "node scripts/runtime.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "@noble/hashes": "2.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tesseract.js": "6.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5.9",
+    "vite": "^7",
+    "vite-plugin-pwa": "^1",
+    "vitest": "^3"
+  }
+}
