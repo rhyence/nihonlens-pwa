@@ -10,9 +10,10 @@ import './style.css';
 
 function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
-  const [pesos, setPesos] = useState('');
+  const [foreignAmount, setForeignAmount] = useState('');
+  const [currency, setCurrency] = useState<'PHP' | 'USD'>('PHP');
   const [yenAmount, setYenAmount] = useState('');
-  const [direction, setDirection] = useState<'JPY' | 'PHP'>('JPY');
+  const [direction, setDirection] = useState<'JPY' | 'local'>('JPY');
   const [status, setStatus] = useState('Checking offline scanner…');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -209,25 +210,29 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     };
   }, [camera, ready, frozen]);
 
-  const rate = settings.php;
+  const rate = currency === 'PHP' ? settings.php : settings.usd;
+  const symbol = currency === 'PHP' ? '₱' : 'US$';
+  const currencyName = currency === 'PHP' ? 'Pesos' : 'Dollars';
+  const currencyLabel = currency === 'PHP' ? 'Philippine pesos' : 'US dollars';
   const validRate = /^\d{0,8}(?:\.\d{1,10})?$/.test(rate) && Number(rate) > 0;
-  const manual = pesosToYen(pesos, rate);
+  const manual = pesosToYen(foreignAmount, rate);
   const manualPesos = validRate && /^\d{1,12}$/.test(yenAmount)
-    ? convert(BigInt(yenAmount), rate, 'PHP')?.replace('PHP ', '₱') : undefined;
+    ? convert(BigInt(yenAmount), rate, currency)?.replace(currency + ' ', symbol) : undefined;
   function display(track: Track) {
     const amount = yen(track.text);
-    return amount === undefined || !validRate ? undefined : convert(amount, rate, 'PHP')?.replace('PHP ', '₱');
+    return amount === undefined || !validRate ? undefined : convert(amount, rate, currency)?.replace(currency + ' ', symbol);
   }
 
   return <main>
     <header className="app-header"><div className="brand"><span className="brand-mark" aria-hidden="true">¥</span><div><h1>NihonLens</h1><p>Your pocket price companion</p></div></div><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀ Light' : '☾ Dark'}</button></header>
-    <div className="section-heading"><h2>Point. Scan. Convert.</h2><span>Yen to pesos</span></div>
+    <div className="section-heading"><h2>Point. Scan. Convert.</h2><span>Yen to {currencyName.toLowerCase()}</span></div>
+    <div className="currency-picker" role="group" aria-label="Display currency"><span>Convert prices to</span><div><button aria-pressed={currency === 'PHP'} onClick={() => { setCurrency('PHP'); setForeignAmount(''); }}>₱ PHP</button><button aria-pressed={currency === 'USD'} onClick={() => { setCurrency('USD'); setForeignAmount(''); }}>US$ USD</button></div></div>
     <div className="camera-card">
     <section className="view" ref={preview} aria-label="Camera preview">
       <video ref={video} muted playsInline />
       <canvas ref={still} className="frozen-preview" style={{ display: frozen ? 'block' : 'none', objectFit: 'cover' }} aria-label="Frozen camera frame" />
       <div className="camera-badge"><span className={camera && !frozen ? 'live-dot' : ''} />{frozen ? 'FROZEN FRAME' : camera ? 'LIVE CAMERA' : 'PRICE SCANNER'}</div>
-      {!camera && <div className="hint"><div className="viewfinder" aria-hidden="true">¥</div><h3>A little clarity on every price.</h3><p>Point at ¥500 or 500円.<br />See what it costs in pesos.</p><span className="privacy-note">Private · On your device</span></div>}
+      {!camera && <div className="hint"><div className="viewfinder" aria-hidden="true">¥</div><h3>A little clarity on every price.</h3><p>Point at ¥500 or 500円.<br />See what it costs in {currencyName.toLowerCase()}.</p><span className="privacy-note">Private · On your device</span></div>}
       {camera && view.w > 8 && source.w > 0 && tracks.map(track => {
         const price = display(track);
         const box = fill(track.box, source.w, source.h, view.w, view.h);
@@ -248,12 +253,12 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </div>
     <section className="panel converter" aria-label="Manual converter">
       <div className="section-heading"><h2>Quick convert</h2><span>Type a price</span></div>
-      <div className="direction-switch" aria-label="Conversion direction"><button aria-pressed={direction === 'JPY'} onClick={() => setDirection('JPY')}>Yen → Pesos</button><button aria-pressed={direction === 'PHP'} onClick={() => setDirection('PHP')}>Pesos → Yen</button></div>
+      <div className="direction-switch" aria-label="Conversion direction"><button aria-pressed={direction === 'JPY'} onClick={() => setDirection('JPY')}>Yen → {currencyName}</button><button aria-pressed={direction === 'local'} onClick={() => setDirection('local')}>{currencyName} → Yen</button></div>
       {direction === 'JPY' ? <><label className="amount-label">Amount in JPY <span className="amount-field"><span aria-hidden="true">¥</span><input inputMode="numeric" maxLength={12} value={yenAmount} onChange={event => setYenAmount(event.target.value)} placeholder="0" /></span></label>
       {yenAmount && !/^\d{1,12}$/.test(yenAmount) && <small>Enter a whole yen amount using digits only.</small>}
-      <div className="conversion-result"><span>In Philippine pesos</span><output aria-label="Amount in pesos" aria-live="polite">{manualPesos ?? '₱—'}</output></div></> : <><label className="amount-label">Amount in PHP <span className="amount-field"><span aria-hidden="true">₱</span><input inputMode="decimal" maxLength={15} value={pesos} onChange={event => setPesos(event.target.value)} placeholder="0.00" /></span></label>
+      <div className="conversion-result"><span>In {currencyLabel}</span><output aria-label={currency === 'PHP' ? 'Amount in pesos' : 'Amount in dollars'} aria-live="polite">{manualPesos ?? symbol + '—'}</output></div></> : <><label className="amount-label">Amount in {currency} <span className="amount-field"><span aria-hidden="true">{symbol}</span><input inputMode="decimal" maxLength={15} value={foreignAmount} onChange={event => setForeignAmount(event.target.value)} placeholder="0.00" /></span></label>
       <div className="conversion-result"><span>In Japanese yen</span><output aria-label="Amount in yen" aria-live="polite">{manual ?? '¥—'}</output></div></>}
-      <small className="rate-note">{validRate ? `¥1 = ₱${rate} · Your saved rate` : 'Set a positive exchange rate below to convert.'}</small>
+      <small className="rate-note">{validRate ? `¥1 = ${symbol}${rate} · Your saved rate` : 'Set a positive exchange rate below to convert.'}</small>
     </section>
     <button className="translator-button" onClick={() => premium.current?.showModal()}><span>Japanese text → English translator</span><span className="premium-tag">PREMIUM</span></button>
     <dialog ref={premium} className="premium-dialog" aria-labelledby="premium-title" aria-describedby="premium-description">
@@ -271,10 +276,11 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </section>}
     {error && <p role="alert">{error}</p>}
     <details className="panel disclosure">
-      <summary>Exchange rate <span>{validRate ? `¥1 = ₱${rate}` : 'Needs attention'}</span></summary>
+      <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>
       <div className="settings">
-      <label>PHP per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings(previous => ({ ...previous, php: event.target.value }))} /></label>
-      <small>{validRate ? 'This is a manual rate. Edit it whenever you need to.' : 'Enter a positive PHP amount for ¥1.'}</small>
+      <label>{currency} per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings(previous => ({ ...previous, [currency === 'PHP' ? 'php' : 'usd']: event.target.value }))} /></label>
+      <small>{validRate ? 'This is a manual rate. Edit it whenever you need to.' : `Enter a positive ${currency} amount for ¥1.`}</small>
+      {currency === 'USD' && <small>USD default checked 4 Nov 2026: US$1 = ¥158.5908. <a href="https://www.currencybeacon.com/rates/USD/JPY" target="_blank" rel="noreferrer">Rate source</a>. Saved for offline use; not a live rate.</small>}
       </div>
     </details>
     <details className="panel disclosure" open={!ready}>

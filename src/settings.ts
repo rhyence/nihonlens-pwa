@@ -1,4 +1,5 @@
-export const defaults = { php: '0.40', theme: 'dark' as 'dark' | 'light' };
+// USD snapshot: 2026-11-04, 1 USD = 158.5908 JPY (CurrencyBeacon).
+export const defaults = { php: '0.40', usd: '0.0063055360', theme: 'dark' as 'dark' | 'light' };
 export type Settings = typeof defaults;
 
 let database: Promise<IDBDatabase> | undefined;
@@ -22,6 +23,7 @@ export async function loadSettings(): Promise<Settings> {
       request.onerror = () => reject(request.error);
     });
     return { php: settings?.php?.trim() ? settings.php : defaults.php,
+      usd: settings?.usd?.trim() ? settings.usd : defaults.usd,
       theme: settings?.theme === 'light' ? 'light' : 'dark' };
   } catch {
     return defaults;

@@ -95,6 +95,10 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
   await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Detected prices' })).toContainText('¥1,280 → ₱512.00');
+  await page.getByRole('button', { name: 'US$ USD', exact: true }).click();
+  await expect(page.locator('.overlay')).toHaveText('US$8.07');
+  await page.getByRole('button', { name: '₱ PHP', exact: true }).click();
+  await expect(page.locator('.overlay')).toHaveText('₱512.00');
   await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
   await expect(page.locator('.overlay')).toHaveText('₱640.00');

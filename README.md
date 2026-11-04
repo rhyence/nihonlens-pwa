@@ -4,6 +4,8 @@ NihonLens is an offline Japanese yen price scanner and Philippine peso converter
 
 The rate starts at ₱0.40 per ¥1. It is editable, stored on the device, and never fetched from a rates service. Camera frames stay on the device. NihonLens downloads only the Japanese OCR data and its browser runtime, about 7 MB in total. The old pack’s verified OCR files can be reused on upgrade.
 
+The PHP/USD switch applies to both camera prices and manual conversion in either direction. Fresh app loads always select PHP. Both rates are saved independently. The USD default is US$0.0063055360 per ¥1, calculated from CurrencyBeacon's November 4, 2026 quote of US$1 = ¥158.5908 (https://www.currencybeacon.com/rates/USD/JPY). This is an editable offline snapshot, not an automatically refreshed rate.
+
 When the normal scan finds no price, the scanner retries with grayscale contrast enhancement and rotations of ±15° and ±30°. Each live cycle does one recognition pass; frozen scans stop on a result or after six attempts. Resume or Stop discards pending results. Rotated boxes are mapped back to the camera coordinates. These fallbacks can take longer and cannot recover unreadable blur, clipped glare, or strong perspective distortion. The browser test includes a dimmed, 15°-tilted price fixture; outdoor iPhone performance still requires device testing.
 
 ## Run locally
