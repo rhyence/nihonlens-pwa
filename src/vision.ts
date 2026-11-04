@@ -75,7 +75,7 @@ export class Tracker {
       for (const key of ['x', 'y', 'w', 'h'] as const) box[key] = old.box[key] * 0.65 + box[key] * 0.35;
       return { ...reading, box, id: old.id, seen: now, hits: old.hits + 1 };
     });
-    this.tracks = [...active, ...unmatched].slice(0, 40);
+    this.tracks = active.slice(0, 40);
     return this.tracks.filter(track => track.hits >= minimumHits);
   }
   clear() { this.tracks = []; }

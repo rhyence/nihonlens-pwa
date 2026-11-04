@@ -44,14 +44,25 @@ it('drops overlapping work and rejects stale frames', async () => {
   expect(publish).toHaveBeenCalledExactlyOnceWith('fresh');
 });
 
-it('smooths, retains briefly and expires a stable overlay', () => {
+it('smooths detected prices and immediately removes missing overlays', () => {
   const tracker = new Tracker();
   const line = { text: 'こんにちは', box: { x: 0.1, y: 0.2, w: 0.3, h: 0.1 } };
   expect(tracker.update([line], 0)).toEqual([]);
   const [first] = tracker.update([{ ...line, box: { ...line.box, x: 0.12 } }], 800);
   expect(first.box.x).toBeCloseTo(0.107);
-  expect(tracker.update([], 1200)[0].id).toBe(first.id);
-  expect(tracker.update([], 4100)).toEqual([]);
+  expect(tracker.update([], 801)).toEqual([]);
+  expect(tracker.update([line], 802)).toEqual([]);
+});
+
+it('removes only the missing price when other prices remain visible', () => {
+  const tracker = new Tracker();
+  const first = { text: '¥500', box: { x: 0.1, y: 0.2, w: 0.3, h: 0.1 } };
+  const second = { text: '¥800', box: { x: 0.1, y: 0.6, w: 0.3, h: 0.1 } };
+  const initial = tracker.update([first, second], 0, 1);
+  const remaining = tracker.update([second], 1, 1);
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0].id).toBe(initial[1].id);
+  expect(remaining[0].text).toBe('¥800');
 });
 
 it('shows a price on the first scan even when recognition takes longer than track expiry', () => {
