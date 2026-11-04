@@ -64,6 +64,27 @@ async function exclusive<T>(operation: () => Promise<T>): Promise<T> {
   });
 }
 
+async function fetchAsset(url: string, path: string, signal: AbortSignal, retrying: (attempt: number) => void) {
+  for (let attempt = 1; ; attempt++) {
+    signal.throwIfAborted();
+    let failure: unknown;
+    try {
+      const response = await fetch(url, { signal, cache: 'no-store', credentials: 'omit' });
+      if (response.ok && response.body) return response.body;
+      await response.body?.cancel();
+      failure = new Error('HTTP ' + response.status);
+      if (response.status !== 408 && response.status !== 429 && response.status < 500)
+        throw new Error('Could not download ' + path + ' (HTTP ' + response.status + ').');
+    } catch (error) {
+      signal.throwIfAborted();
+      if (!(error instanceof TypeError)) throw error;
+      failure = error;
+    }
+    if (attempt === 3) throw new Error('Could not download ' + path + ' after three attempts.', { cause: failure });
+    retrying(attempt + 1);
+    await new Promise<void>(resolve => setTimeout(resolve, attempt * 700));
+  }
+}
 export async function downloadPack(progress: (message: string) => void, signal: AbortSignal) {
   await controlled();
   await exclusive(async () => {
@@ -78,11 +99,12 @@ export async function downloadPack(progress: (message: string) => void, signal: 
         const report = (bytes: number) => progress('Downloading file ' + (index + 1) + '/' + packAssets.length +
           ' · ' + ((saved + bytes) / 1e6).toFixed(1) + '/' + (packBytes / 1e6).toFixed(1) + ' MB');
         report(0);
-        const response = await fetch(asset.url, { signal, cache: 'no-store', credentials: 'omit' });
-        if (!response.ok || !response.body) throw new Error('Could not download ' + asset.path + ' (HTTP ' + response.status + ').');
+        const body = await fetchAsset(asset.url, asset.path, signal, attempt =>
+          progress('Retrying file ' + (index + 1) + '/' + packAssets.length + ' · attempt ' + attempt + '/3'));
+        report(0);
         let bytes = 0;
         const hash = sha256.create();
-        const stream = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+        const stream = body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             const previous = bytes;
             bytes += chunk.byteLength;

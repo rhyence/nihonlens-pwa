@@ -107,8 +107,10 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
   } finally { fixtureServer?.close(); }
 });
 
-test('rejects an interrupted or invalid pack download', async ({ page, context }) => {
+test('retries a transient failure and rejects an invalid pack download', async ({ page, context }) => {
+  let attempts = 0;
   await context.route(/huggingface\.co\/.*\/config\.json\?/, route => route.fulfill({
+    status: ++attempts === 1 ? 503 : 200,
     body: 'truncated model configuration',
     headers: { 'access-control-allow-origin': '*' },
   }));
@@ -116,5 +118,6 @@ test('rejects an interrupted or invalid pack download', async ({ page, context }
   await expect(page.getByRole('status')).toHaveText(/needs a download/);
   await page.getByRole('button', { name: 'Download / retry pack' }).click();
   await expect(page.getByRole('status')).toHaveText(/Could not save or verify marian\/config\.json/);
+  expect(attempts).toBe(2);
   expect(await page.evaluate(async () => (await caches.keys()).some(key => key.startsWith('nihonlens-pack-')))).toBe(false);
 });

@@ -15,7 +15,7 @@ Use the preview server to test service workers and offline use. A phone needs HT
 
 ## Offline pack
 
-Start the download while online. The app validates the exact byte count and SHA-256 of every asset, then runs OCR on horizontal and vertical fixtures and translates the recognized text to English. It repeats integrity and inference checks when the app opens with an installed pack. **Offline Ready** appears only after those checks pass. Retry interrupted or damaged downloads from the pack panel. **Delete pack** frees the model cache. The app requests persistent browser storage when supported, but the browser still controls quota and eviction.
+Start the download while online. The app validates the exact byte count and SHA-256 of every asset, then runs OCR on horizontal and vertical fixtures and translates the recognized text to English. It repeats integrity and inference checks when the app opens with an installed pack. **Offline Ready** appears only after those checks pass. The app automatically retries transient server or connection errors for each file. Retry interrupted streams or damaged downloads from the pack panel. **Delete pack** frees the model cache. The app requests persistent browser storage when supported, but the browser still controls quota and eviction.
 
 Workbox precaches the app shell separately. Its cache-only route serves model assets and WASM to dedicated workers. Transformers.js disables remote model lookup and runs ONNX Runtime Web locally with one WASM thread and greedy decoding. OCR uses Tesseract.js and LSTM mode. The original Japanese remains visible beneath or beside the overlay.
 
