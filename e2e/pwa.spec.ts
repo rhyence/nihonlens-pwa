@@ -27,6 +27,7 @@ test('converts a manual peso amount and saves the rate offline', async ({ page, 
   await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
   await page.getByRole('button', { name: 'Close menu' }).click();
+  await expect(page.locator('.menu-sheet')).not.toBeVisible();
   await page.getByRole('button', { name: 'Quick converter', exact: true }).click();
   await expect(page.getByLabel('Amount in yen')).toHaveText('¥3,520');
   await context.setOffline(true);
@@ -122,6 +123,7 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
   await page.getByRole('button', { name: 'Close menu' }).click();
+  await expect(page.locator('.menu-sheet')).not.toBeVisible();
   await expect(page.locator('.overlay')).toHaveText('₱640.00');
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(page.getByLabel('Frozen camera frame')).toBeHidden();

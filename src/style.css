@@ -142,3 +142,18 @@ main{padding-bottom:110px}
 .view{height:clamp(260px,calc(100svh - 480px),620px)}
 .sheet-heading{position:sticky;top:0;z-index:2;background:inherit;padding:8px 0}
 @media(min-width:700px){.view{height:620px}}
+.compact-header{margin-bottom:12px}
+.theme-toggle{font-size:21px;min-width:44px;padding:6px 10px}
+.sheet.menu-sheet{inset:0 0 0 auto;margin:0;width:min(88vw,400px);height:100dvh;max-height:100dvh;border-radius:22px 0 0 22px;padding:20px 18px max(24px,env(safe-area-inset-bottom))}
+.sheet[open]{animation:sheet-in .22s ease-out}
+.sheet.menu-sheet[open]{animation:drawer-in .26s cubic-bezier(.2,.8,.2,1)}
+.sheet[open]::backdrop{animation:backdrop-in .22s ease-out}
+.export-actions{display:flex;gap:10px;margin:0 0 10px}.export-actions button{flex:1;font-size:13px}
+.export-notice{font-size:12px;margin-bottom:14px;color:#657864}
+.copy-preview{width:100%;min-height:180px;margin:0 0 16px;padding:12px;font:12px/1.6 ui-monospace,monospace;border:1px solid #75856d;border-radius:12px;resize:vertical}
+:root:not([data-theme=light]) .export-notice{color:#b3c8a9}
+@keyframes drawer-in{from{transform:translateX(100%);opacity:.5}to{transform:translateX(0);opacity:1}}
+@keyframes sheet-in{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes backdrop-in{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.sheet[open],.sheet[open]::backdrop{animation:none}}
+@media(prefers-reduced-motion:reduce){.sheet.menu-sheet[open]{animation:none}}

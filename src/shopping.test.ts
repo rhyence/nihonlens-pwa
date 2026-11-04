@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { cartTotal, convertedCents, formatCents, parseCents, type Item } from './shopping';
+import { cartTotal, convertedCents, formatCents, formatShopping, parseCents, type Item } from './shopping';
 const item = (price: string, quantity = '1'): Item => ({ id: price, name: '', price, quantity });
 it('totals quantities and updates after edits and removal', () => {
   expect(cartTotal([item('1280', '2'), item('500')])).toBe(3060n);
@@ -17,4 +17,13 @@ it('deducts the converted total from a budget with exact cents', () => {
   expect(convertedCents(1280n, '0.0063055360')).toBe(807n);
   expect(convertedCents(1280n, '0')).toBeUndefined();
   expect(parseCents('-1')).toBeUndefined();
+});
+
+it('exports item details, exact total and over-budget balance', () => {
+  const text = formatShopping({ items: [{ ...item('1280', '2'), name: 'Lunch\nset' }], budgets: { PHP: '1000', USD: '' } }, 'PHP', '0.40');
+  expect(text).toContain('1. Lunch set');
+  expect(text).toContain('2 × ¥1,280 = ¥2,560 (₱1,024.00)');
+  expect(text).toContain('TOTAL: ¥2,560 / ₱1,024.00');
+  expect(text).toContain('OVER BUDGET: ₱24.00');
+  expect(formatShopping({ items: [item('')], budgets: { PHP: '', USD: '' } }, 'PHP', '0.40')).toBeUndefined();
 });

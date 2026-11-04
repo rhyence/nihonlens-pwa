@@ -6,13 +6,15 @@ import { controlled, downloadPack, removePack, verifyInstalled } from './pack';
 import { packBytes } from './pack-info';
 import { convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track } from './vision';
 import { loadSettings, saveSettings, type Settings } from './settings';
-import { cartTotal, convertedCents, formatCents, itemTotal, loadShopping, parseCents, shoppingKey, type Item } from './shopping';
+import { cartTotal, convertedCents, formatCents, formatShopping, itemTotal, loadShopping, parseCents, shoppingKey, type Item } from './shopping';
 import './style.css';
 
 function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
   const [shopping, setShopping] = useState(loadShopping);
   const [notice, setNotice] = useState('');
+  const [exportNotice, setExportNotice] = useState('');
+  const [copyFallback, setCopyFallback] = useState(false);
   const [removed, setRemoved] = useState<Item | undefined>();
   const [foreignAmount, setForeignAmount] = useState('');
   const [currency, setCurrency] = useState<'PHP' | 'USD'>('PHP');
@@ -36,6 +38,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const menu = useRef<HTMLDialogElement>(null);
   const cart = useRef<HTMLDialogElement>(null);
   const converter = useRef<HTMLDialogElement>(null);
+  const menuClosing = useRef(false);
   const still = useRef<HTMLCanvasElement>(null);
   const preview = useRef<HTMLDivElement>(null);
   const stream = useRef<MediaStream | undefined>(undefined);
@@ -43,6 +46,19 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const abort = useRef<AbortController | undefined>(undefined);
   const gate = useRef(new FrameGate());
   const tracker = useRef(new Tracker());
+
+  async function closeMenu(next?: () => void) {
+    const drawer = menu.current;
+    if (!drawer?.open || menuClosing.current) return;
+    menuClosing.current = true;
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      await drawer.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: 'translateX(100%)', opacity: 0 }],
+        { duration: 180, easing: 'ease-in' }).finished.catch(() => {});
+    }
+    drawer.close();
+    menuClosing.current = false;
+    next?.();
+  }
 
   useEffect(() => {
     try { localStorage.setItem(shoppingKey, JSON.stringify(shopping)); }
@@ -246,6 +262,32 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const budgetCents = parseCents(budget);
   const remaining = budgetCents !== undefined && totalCents !== undefined ? budgetCents - totalCents : undefined;
   const totalLabel = totalCents === undefined ? 'Check prices / rate' : formatCents(totalCents, symbol);
+  const exportText = formatShopping(shopping, currency, rate);
+
+  async function copyList() {
+    if (exportText === undefined) return;
+    try {
+      await navigator.clipboard.writeText(exportText);
+      setCopyFallback(false);
+      setExportNotice('Formatted list copied. Paste it into Notes or a message.');
+    } catch {
+      setCopyFallback(true);
+      setExportNotice('Copy is unavailable here. Select the text below to copy it, or save a text file.');
+    }
+  }
+
+  function saveList() {
+    if (exportText === undefined) return;
+    const url = URL.createObjectURL(new Blob([exportText], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'nihonlens-shopping-list.txt';
+    cart.current?.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setExportNotice('Text file prepared. Use your browser’s download or save options.');
+  }
   const validRate = /^\d{0,8}(?:\.\d{1,10})?$/.test(rate) && Number(rate) > 0;
   const manual = pesosToYen(foreignAmount, rate);
   const manualPesos = validRate && /^\d{1,12}$/.test(yenAmount)
@@ -256,8 +298,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }
 
   return <main>
-    <header className="app-header"><div className="brand"><span className="brand-mark" aria-hidden="true">¥</span><div><h1>NihonLens</h1><p>Your pocket price companion</p></div></div><button className="menu-toggle" aria-label="Open menu" onClick={() => menu.current?.showModal()}>☰</button></header>
-    <div className="section-heading"><h2>Point. Scan. Convert.</h2><span>Yen to {currencyName.toLowerCase()}</span></div>
+    <header className="app-header compact-header"><span className="brand-mark" aria-label="NihonLens">¥</span><button className="menu-toggle" aria-label="Open menu" onClick={() => menu.current?.showModal()}>☰</button></header>
     <div className="currency-picker" role="group" aria-label="Display currency"><span>Convert prices to</span><div><button aria-pressed={currency === 'PHP'} onClick={() => { setCurrency('PHP'); setForeignAmount(''); }}>₱ PHP</button><button aria-pressed={currency === 'USD'} onClick={() => { setCurrency('USD'); setForeignAmount(''); }}>US$ USD</button></div></div>
     <div className="camera-card">
     <section className="view" ref={preview} aria-label="Camera preview">
@@ -309,10 +350,14 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <small className="prank-note">It’s a prank. No payments are collected.</small>
     </dialog>
     {error && <p role="alert">{error}</p>}
-    <dialog ref={menu} className="sheet menu-sheet" aria-labelledby="menu-title">
-      <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => menu.current?.close()}>×</button></div>
-      <nav className="menu-links" aria-label="App tools"><button onClick={() => { menu.current?.close(); cart.current?.showModal(); }}>Shopping list & budget</button><button onClick={() => { menu.current?.close(); converter.current?.showModal(); }}>Quick converter</button></nav>
-      <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀ Light' : '☾ Dark'}</button></div>
+    <dialog ref={menu} className="sheet menu-sheet" aria-labelledby="menu-title" onCancel={event => { event.preventDefault(); void closeMenu(); }} onClick={event => {
+      if (event.target !== event.currentTarget) return;
+      const box = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) void closeMenu();
+    }}>
+      <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
+      <nav className="menu-links" aria-label="App tools"><button onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget</button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
+      <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>
       <div className="settings">
@@ -346,13 +391,17 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       </div>
       </div>
     </details>
-    <button className="translator-button" onClick={() => { menu.current?.close(); premium.current?.showModal(); }}><span>Japanese text → English translator</span><span className="premium-tag">PREMIUM</span></button>
+    <button className="translator-button" onClick={() => void closeMenu(() => premium.current?.showModal())}><span>Japanese text → English translator</span><span className="premium-tag">PREMIUM</span></button>
     </dialog>
     <button className="cart-dock" onClick={() => cart.current?.showModal()} aria-label="Open shopping list">
       <span>Shopping list · {shopping.items.length} {shopping.items.length === 1 ? 'item' : 'items'}<small>{remaining === undefined ? 'Tap to edit items & set a budget' : remaining < 0n ? `${formatCents(-remaining, symbol)} over budget` : `${formatCents(remaining, symbol)} left in your budget`}</small></span><strong>{totalLabel} <span aria-hidden="true">›</span></strong>
     </button>
     <dialog ref={cart} className="sheet cart-sheet" aria-labelledby="cart-title">
       <div className="sheet-heading"><div><h2 id="cart-title">Shopping list</h2><small>Saved on this device</small></div><button aria-label="Close shopping list" onClick={() => cart.current?.close()}>×</button></div>
+      <div className="export-actions"><button disabled={exportText === undefined} onClick={() => void copyList()}>Copy list</button><button disabled={exportText === undefined} onClick={saveList}>Save .txt</button></div>
+      {exportText === undefined && <small>Correct item prices, quantities, rate, or budget before exporting.</small>}
+      <p className="export-notice" aria-live="polite">{exportNotice}</p>
+      {copyFallback && <textarea className="copy-preview" aria-label="Formatted shopping list" readOnly value={exportText ?? ''} onFocus={event => event.currentTarget.select()} />}
       <section className="budget-card" aria-label="Shopping total and budget">
         <div className="cart-total"><span>Estimated total ({currency})</span><strong aria-label="Shopping total">{totalLabel}</strong><small>{totalYen === undefined ? 'Finish editing the item prices and quantities.' : `¥${totalYen.toLocaleString('en-US')} in total · Converted at your saved rate`}</small></div>
         <label>Budget in {currency}<input aria-label={`Budget in ${currency}`} inputMode="decimal" placeholder="Set a budget" maxLength={15} value={budget} onChange={event => setShopping(previous => ({ ...previous, budgets: { ...previous.budgets, [currency]: event.target.value } }))} /></label>

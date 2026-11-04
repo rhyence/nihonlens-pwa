@@ -47,3 +47,26 @@ export function formatCents(cents: bigint, symbol: string) {
   const absolute = cents < 0n ? -cents : cents;
   return (cents < 0n ? '−' : '') + symbol + (absolute / 100n).toLocaleString('en-US') + '.' + String(absolute % 100n).padStart(2, '0');
 }
+
+export function formatShopping(shopping: Shopping, currency: 'PHP' | 'USD', rate: string): string | undefined {
+  const yenTotal = cartTotal(shopping.items);
+  const cents = yenTotal === undefined ? undefined : convertedCents(yenTotal, rate);
+  const budgetText = shopping.budgets[currency];
+  const budget = parseCents(budgetText);
+  if (yenTotal === undefined || cents === undefined || (budgetText && budget === undefined)) return;
+  const symbol = currency === 'PHP' ? '₱' : 'US$';
+  const lines = ['NIHONLENS — SHOPPING LIST', `Currency: ${currency} | Rate: ¥1 = ${symbol}${rate}`, ''];
+  shopping.items.forEach((item, index) => {
+    const total = itemTotal(item)!;
+    lines.push(`${index + 1}. ${item.name.replace(/\s+/g, ' ').trim() || 'Unnamed item'}`,
+      `   ${item.quantity} × ¥${BigInt(item.price).toLocaleString('en-US')} = ¥${total.toLocaleString('en-US')} (${formatCents(convertedCents(total, rate)!, symbol)})`);
+  });
+  if (!shopping.items.length) lines.push('No items yet.');
+  lines.push('', `TOTAL: ¥${yenTotal.toLocaleString('en-US')} / ${formatCents(cents, symbol)}`);
+  if (budget !== undefined) {
+    const remaining = budget - cents;
+    lines.push(`BUDGET: ${formatCents(budget, symbol)}`, `${remaining < 0n ? 'OVER BUDGET' : 'REMAINING'}: ${formatCents(remaining < 0n ? -remaining : remaining, symbol)}`);
+  }
+  lines.push('', 'Estimate at your saved exchange rate. Total rounded after conversion.');
+  return lines.join('\n');
+}
