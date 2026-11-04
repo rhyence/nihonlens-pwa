@@ -132,7 +132,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             surface.width = Math.round(width * scale);
             surface.height = Math.round(height * scale);
             if (!snapshot) context.drawImage(element!, 0, 0, surface.width, surface.height);
-            const readings = await engine.read(snapshot ?? surface, settings.vertical);
+            const readings = await engine.read(snapshot ?? surface, settings.vertical, frozen);
             if (scanOnFreeze) await engine.releaseOcr();
             if (frozen && running && document.visibilityState === 'visible') {
               setSource({ w: width, h: height });
@@ -283,8 +283,11 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         const value = label(track);
         const box = fill(track.box, source.w, source.h, size.w, size.h, frozen ? 'contain' : 'cover');
         if (!value || box.x + box.w < 0 || box.y + box.h < 0 || box.x > size.w || box.y > size.h) return null;
-        return <button className="overlay" key={track.id} style={{ left: Math.max(0, Math.min(size.w - 100, box.x)),
-          top: Math.max(0, Math.min(size.h - 46, box.y + box.h)), maxWidth: Math.max(100, size.w - Math.max(0, box.x)) }}
+        const labelWidth = Math.min(200, Math.max(112, box.w), size.w - 8);
+        const centerX = box.x + box.w / 2;
+        const left = Math.max(4, Math.min(size.w - labelWidth - 4, centerX - labelWidth / 2));
+        const top = Math.max(4, Math.min(size.h - 48, box.y));
+        return <button className="overlay" key={track.id} style={{ left, top, width: labelWidth }}
           onClick={() => setSelected(track)}>{value}</button>;
       })}
     </section>

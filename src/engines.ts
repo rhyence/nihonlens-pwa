@@ -1,6 +1,6 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
 import { packCache, packPath } from './pack-info';
-import { normalize, type Reading } from './vision';
+import { normalize, yen, type Reading } from './vision';
 
 function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
   let timer: ReturnType<typeof setTimeout>;
@@ -20,7 +20,7 @@ export class Engines {
 
   constructor(private readonly lowMemory = false) {}
 
-  async read(canvas: HTMLCanvasElement, vertical: boolean): Promise<Reading[]> {
+  async read(canvas: HTMLCanvasElement, vertical: boolean, thorough = false): Promise<Reading[]> {
     if (this.closed) throw new Error('OCR stopped.');
     if (!this.ocr || this.vertical !== vertical) {
       await this.ocr?.terminate();
@@ -50,15 +50,38 @@ export class Engines {
         throw new Error('OCR stopped.');
       }
       this.vertical = vertical;
-      await this.ocr.setParameters({ tessedit_pageseg_mode: vertical ? PSM.SINGLE_BLOCK_VERT_TEXT : PSM.SPARSE_TEXT });
     }
-    const { data } = await deadline(this.ocr.recognize(canvas, {}, { blocks: true }), 'Japanese OCR timed out.');
-    const lines = (data.blocks ?? []).flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines));
-    return lines.map(({ text, bbox }) => ({
-      text: normalize(text),
-      box: { x: bbox.x0 / canvas.width, y: bbox.y0 / canvas.height,
-        w: (bbox.x1 - bbox.x0) / canvas.width, h: (bbox.y1 - bbox.y0) / canvas.height },
-    })).filter(line => line.text && line.box.w > 0 && line.box.h > 0).slice(0, 30);
+    const worker = this.ocr;
+    const { width, height } = canvas;
+    const recognize = async (mode: PSM): Promise<Reading[]> => {
+      await worker.setParameters({ tessedit_pageseg_mode: mode });
+      const { data } = await deadline(worker.recognize(canvas, {}, { blocks: true }), 'Japanese OCR timed out.');
+      const lines = (data.blocks ?? []).flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines));
+      return lines.flatMap(({ text, bbox }) => {
+        const x0 = Math.max(0, bbox.x0);
+        const y0 = Math.max(0, bbox.y0);
+        const x1 = Math.min(width, bbox.x1);
+        const y1 = Math.min(height, bbox.y1);
+        const normalized = normalize(text);
+        if (!normalized || !(x1 > x0 && y1 > y0)) return [];
+        return [{ text: normalized, box: { x: x0 / width, y: y0 / height, w: (x1 - x0) / width, h: (y1 - y0) / height } }];
+      }).slice(0, 30);
+    };
+
+    const first = await recognize(vertical ? PSM.SINGLE_BLOCK_VERT_TEXT : PSM.SPARSE_TEXT);
+    if (vertical || !thorough) return first;
+    const useful = (readings: Reading[]) => readings.some(({ text }) =>
+      yen(text) !== undefined || /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]{2}/u.test(text.replace(/\s/g, '')));
+    if (useful(first)) return first;
+
+    // Sparse recognition can miss dense horizontal menus or tightly framed text.
+    for (const mode of [PSM.AUTO, PSM.SINGLE_BLOCK]) {
+      if (this.closed) return [];
+      const retry = await recognize(mode);
+      if (useful(retry)) return retry;
+      if (retry.length > first.length) first.splice(0, first.length, ...retry);
+    }
+    return first;
   }
 
   translate(text: string): Promise<string> {

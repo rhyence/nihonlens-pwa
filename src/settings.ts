@@ -1,4 +1,4 @@
-export const defaults = { translate: true, currency: true, vertical: false, php: '', usd: '', units: 'PHP' };
+export const defaults = { translate: true, currency: true, vertical: false, php: '0.40', usd: '', units: 'PHP' };
 export type Settings = typeof defaults;
 
 let database: Promise<IDBDatabase> | undefined;
@@ -21,7 +21,7 @@ export async function loadSettings(): Promise<Settings> {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    return { ...defaults, ...settings };
+    return { ...defaults, ...settings, php: settings?.php?.trim() ? settings.php : defaults.php };
   } catch {
     return defaults;
   }
