@@ -139,7 +139,7 @@ main{padding-bottom:110px}
 :root:not([data-theme=light]) .over-budget{color:#ffb5a6}
 :root:not([data-theme=light]) .empty-cart{color:#acc0a5}
 @media(max-width:600px){.sheet{margin:auto auto 0;width:100%;max-height:88dvh;border-radius:24px 24px 0 0;padding-bottom:max(24px,env(safe-area-inset-bottom))}}
-.view{height:clamp(260px,calc(100svh - 480px),620px)}
+.view{height:clamp(260px,calc(100svh - 370px),620px)}
 .sheet-heading{position:sticky;top:0;z-index:2;background:inherit;padding:8px 0}
 @media(min-width:700px){.view{height:620px}}
 .compact-header{margin-bottom:12px}
@@ -157,3 +157,8 @@ main{padding-bottom:110px}
 @keyframes backdrop-in{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.sheet[open],.sheet[open]::backdrop{animation:none}}
 @media(prefers-reduced-motion:reduce){.sheet.menu-sheet[open]{animation:none}}
+
+.camera-controls{padding-bottom:14px}
+.camera-progress{position:absolute;bottom:10px;left:12px;right:12px;z-index:1;background:#10251fe6;border-radius:10px;min-height:0;padding:8px 12px;pointer-events:none}
+.scan-shortcuts{margin-top:24px}
+.screen-reader-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

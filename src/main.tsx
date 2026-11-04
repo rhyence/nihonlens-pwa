@@ -315,6 +315,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         const top = Math.max(4, Math.min(view.h - 44, box.y));
         return <button className="overlay price" key={track.id} style={{ width, left, top }} aria-label={`Add ${track.text} to shopping list`} onClick={() => { const amount = yen(track.text); if (amount !== undefined) addItem(String(amount)); }}>{price}</button>;
       })}
+      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
     </section>
     <div className="camera-controls">
       <button className={camera ? 'secondary' : 'primary'} disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
@@ -322,10 +323,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       </button>
       {camera && <button className="primary" onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
     </div>
-    <p className="scan-status" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>
+
     </div>
     <div className="scan-shortcuts"><button onClick={() => converter.current?.showModal()}>Quick converter</button>{!ready && <button onClick={() => menu.current?.showModal()}>Set up scanner</button>}</div>
-    <p className="cart-notice" aria-live="polite">{notice || 'Tap a price overlay to add it to your shopping list.'}</p>
+    <span className="screen-reader-only" aria-live="polite">{notice}</span>
     <dialog ref={converter} className="sheet" aria-labelledby="converter-title">
       <div className="sheet-heading"><h2 id="converter-title">Quick converter</h2><button aria-label="Close converter" onClick={() => converter.current?.close()}>×</button></div>
     <section className="panel converter" aria-label="Manual converter">
