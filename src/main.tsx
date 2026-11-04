@@ -10,8 +10,23 @@ import './style.css';
 const scanOnFreeze = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+const interruptionKey = 'nihonlens.translation-in-progress';
+function translationInterrupted() {
+  try { return sessionStorage.getItem(interruptionKey) === 'yes'; }
+  catch { return false; }
+}
+function recordTranslation(active: boolean) {
+  try {
+    if (active) sessionStorage.setItem(interruptionKey, 'yes');
+    else sessionStorage.removeItem(interruptionKey);
+  } catch { /* Browser storage may be unavailable. */ }
+}
+
 function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
+  const [mobileTranslation, setMobileTranslation] = useState(false);
+  const [interrupted, setInterrupted] = useState(() => scanOnFreeze && translationInterrupted());
+  const translationEnabled = scanOnFreeze ? mobileTranslation : settings.translate;
   const [status, setStatus] = useState('Checking offline pack…');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,15 +69,14 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         }
         await controlled();
       }
-      setStatus('Verifying Japanese OCR and English translation…');
+      setStatus(scanOnFreeze ? 'Verifying Japanese text recognition…' : 'Verifying Japanese OCR and English translation…');
       const engine = new Engines(scanOnFreeze);
       await engines.current?.close();
       engines.current = engine;
-      await engine.smokeTest();
-      if (scanOnFreeze) engine.releaseTranslation();
+      await engine.smokeTest(!scanOnFreeze);
       controller.signal.throwIfAborted();
       setReady(true);
-      setStatus('Offline Ready');
+      setStatus(scanOnFreeze ? 'Offline OCR ready. English translation is optional on iPhone and iPad.' : 'Offline Ready');
     } catch (error) {
       await engines.current?.close();
       engines.current = undefined;
@@ -95,7 +109,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }, [settings, initialSettings]);
 
   useEffect(() => {
-    if (!ready || !camera || (!settings.translate && !settings.currency) || (scanOnFreeze && !frozen)) return;
+    if (!ready || !camera || (!translationEnabled && !settings.currency) || (scanOnFreeze && !frozen)) return;
     const surface = document.createElement('canvas');
     const context = surface.getContext('2d')!;
     const frameGate = gate.current;
@@ -122,15 +136,36 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             if (frozen && running && document.visibilityState === 'visible') {
               setSource({ w: width, h: height });
               setTracks(readings.map((reading, id) => ({ ...reading, id, hits: 2, seen: performance.now() })));
-              if (settings.translate && readings.length) setScanMessage('Translating frozen frame…');
+              if (translationEnabled && readings.length) setScanMessage('Translating frozen frame…');
             }
-            if (settings.translate && running && document.visibilityState === 'visible') {
-              for (const reading of readings.slice(0, 4)) {
-                if (!running || document.visibilityState !== 'visible') break;
-                reading.english = await translations.current.get(reading.text, text => engine.translate(text));
+            let translationFailed = false;
+            if (translationEnabled && running && document.visibilityState === 'visible') {
+              try {
+                for (const reading of readings.slice(0, 4)) {
+                  if (!running || document.visibilityState !== 'visible') break;
+                  reading.english = await translations.current.get(reading.text, text => {
+                    if (scanOnFreeze) recordTranslation(true);
+                    return engine.translate(text);
+                  });
+                }
+              } catch (error) {
+                if (!scanOnFreeze) throw error;
+                translationFailed = true;
+              } finally {
+                if (scanOnFreeze) {
+                  engine.releaseTranslation();
+                  recordTranslation(false);
+                }
               }
             }
-            if (scanOnFreeze) engine.releaseTranslation();
+            if (scanOnFreeze && running && document.visibilityState === 'visible') {
+              if (translationFailed) {
+                setNotice('English translation stopped. Yen conversion is still available.');
+              } else if (readings.some(reading => reading.english)) {
+                setStatus('Offline Ready');
+                setInterrupted(false);
+              }
+            }
             return readings;
           }, readings => {
             if (document.visibilityState !== 'visible') return;
@@ -162,7 +197,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [ready, camera, frozen, settings.translate, settings.currency, settings.vertical]);
+  }, [ready, camera, frozen, translationEnabled, settings.currency, settings.vertical]);
 
   function stopCamera() {
     gate.current.invalidate();
@@ -216,7 +251,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       still.current = frame;
       element.pause();
       setTracks([]);
-      setScanMessage(ready ? '' : 'Wait for Offline Ready before scanning.');
+      setScanMessage(ready ? '' : 'Wait for the offline pack check before scanning.');
     }
     setFrozen(!frozen);
   }
@@ -227,7 +262,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       ? [settings.units !== 'USD' && convert(price, settings.php, 'PHP'),
          settings.units !== 'PHP' && convert(price, settings.usd, 'USD')].filter(Boolean).join(' / ')
       : '';
-    return [settings.translate && track.english, converted].filter(Boolean).join(' · ');
+    return [translationEnabled && track.english, converted].filter(Boolean).join(' · ');
   }
 
   return <main>
@@ -248,7 +283,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <button disabled={starting} onClick={camera ? stopCamera : () => void startCamera()}>{camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}</button>
       <button disabled={!camera} onClick={() => void toggleFreeze()}>{frozen ? 'Resume' : scanOnFreeze ? 'Freeze & scan' : 'Freeze'}</button>
     </div>
-    {camera && scanOnFreeze && !frozen && <p>Tap Freeze &amp; scan to translate a still frame.</p>}
+    {camera && scanOnFreeze && !frozen && <p>Tap Freeze &amp; scan to read a still frame.</p>}
+    {interrupted && <p role="alert">The last English translation was interrupted. You can still scan yen prices. Enable English translation to try it again.</p>}
     {scanMessage && <p aria-live="polite">{scanMessage}</p>}
     {selected && <aside><strong>Original Japanese</strong><p lang="ja">{selected.text}</p><button onClick={() => setSelected(undefined)}>Close</button></aside>}
     {notice && <p role="alert">{notice}</p>}
@@ -279,7 +315,13 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </section>
     <section className="panel settings">
       <h2>Settings</h2>
-      <label><input type="checkbox" checked={settings.translate} onChange={e => setSettings({ ...settings, translate: e.target.checked })} /> English translation</label>
+      <label><input type="checkbox" checked={translationEnabled} onChange={e => {
+        if (scanOnFreeze) {
+          setMobileTranslation(e.target.checked);
+          setNotice('');
+          if (e.target.checked) setInterrupted(false);
+        } else setSettings({ ...settings, translate: e.target.checked });
+      }} /> English translation</label>
       <label><input type="checkbox" checked={settings.currency} onChange={e => setSettings({ ...settings, currency: e.target.checked })} /> Yen conversion</label>
       <label><input type="checkbox" checked={settings.vertical} onChange={e => {
         tracker.current.clear(); setTracks([]); setSelected(undefined);

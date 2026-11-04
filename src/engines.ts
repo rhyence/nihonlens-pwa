@@ -97,7 +97,7 @@ export class Engines {
     this.pending = undefined;
   }
 
-  async smokeTest() {
+  async smokeTest(verifyTranslation = true) {
     let recognized = '';
     for (const vertical of [true, false]) {
       const image = new Image();
@@ -114,6 +114,7 @@ export class Engines {
       }
     }
     if (this.lowMemory) await this.releaseOcr();
+    if (!verifyTranslation) return;
     const translation = await this.translate(recognized);
     if (!/hello|hi\b|good afternoon/i.test(translation)) throw new Error('Translation failed its Japanese verification sentence.');
     return translation;

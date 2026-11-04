@@ -61,8 +61,8 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await page.goto('/');
     await expect(page.getByRole('status')).toHaveText(/needs a download/);
     await page.getByRole('button', { name: 'Download / retry pack' }).click();
-    await expect(page.getByRole('status')).toHaveText(/Offline Ready|Pack unavailable/, { timeout: 390_000 });
-    await expect(page.getByRole('status')).toHaveText('Offline Ready');
+    await expect(page.getByRole('status')).toHaveText(/Offline OCR ready|Pack unavailable/, { timeout: 390_000 });
+    await expect(page.getByRole('status')).toHaveText(/Offline OCR ready/);
     if (fixtureDir) await context.unrouteAll();
     await context.setOffline(true);
     await page.addInitScript(() => {
@@ -83,13 +83,16 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
       };
     });
     await page.reload();
-    await expect(page.getByRole('status')).toHaveText('Offline Ready', { timeout: 90_000 });
+    await expect(page.getByRole('status')).toHaveText(/Offline OCR ready/, { timeout: 90_000 });
+    await expect(page.getByLabel('English translation')).not.toBeChecked();
     await page.getByLabel('PHP per JPY').fill('0.40');
     await page.getByRole('button', { name: 'Start camera' }).click();
     await expect(page.locator('.overlay')).toHaveCount(0);
     await page.getByRole('button', { name: 'Freeze & scan' }).click();
-    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 80_000 });
     await expect(page.locator('.overlay').filter({ hasText: 'PHP 512.00' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toHaveCount(0);
+    await page.getByLabel('English translation').check();
+    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 80_000 });
     await page.getByRole('button', { name: 'PHP 512.00' }).click();
     await expect(page.getByText('Original Japanese')).toBeVisible();
     await expect(page.locator('[lang=ja]')).toHaveText(/1,280\s*円/);
@@ -105,8 +108,11 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
       const asset = (await cache.keys()).find(key => key.url.endsWith('tokenizer.json'))!;
       await cache.put(asset, new Response('broken', { headers: { 'content-length': '6' } }));
     });
+    await page.evaluate(() => sessionStorage.setItem('nihonlens.translation-in-progress', 'yes'));
     await page.reload();
     await expect(page.getByRole('status')).toHaveText(/needs a download/);
+    await expect(page.getByRole('alert')).toHaveText(/English translation/);
+    await expect(page.getByLabel('English translation')).not.toBeChecked();
     await page.getByRole('button', { name: 'Delete pack' }).click();
     await expect(page.getByRole('status')).toHaveText(/deleted/);
   } finally { fixtureServer?.close(); }
