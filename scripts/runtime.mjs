@@ -1,20 +1,7 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { gzipSync } from 'node:zlib';
-import { runtimeChunkBytes } from '../src/pack-info.ts';
+import { copyFile, mkdir, readdir, unlink } from 'node:fs/promises';
 await mkdir('public/runtime', { recursive: true });
-const files = {
-  'tesseract.js/dist': ['worker.min.js'],
-  'tesseract.js-core': ['tesseract-core-lstm.wasm.js'],
-  'onnxruntime-web/dist': [
-    'ort-wasm-simd-threaded.jsep.mjs',
-  ],
-};
-for (const [directory, assets] of Object.entries(files)) {
-  for (const asset of assets) await copyFile('node_modules/' + directory + '/' + asset, 'public/runtime/' + asset);
+for (const name of await readdir('public/runtime')) {
+  if (/^ort-wasm-simd-threaded\./.test(name)) await unlink('public/runtime/' + name);
 }
-const wasm = 'ort-wasm-simd-threaded.jsep.wasm';
-const binary = await readFile('node_modules/onnxruntime-web/dist/' + wasm);
-for (let offset = 0; offset < binary.length; offset += runtimeChunkBytes) {
-  const index = offset / runtimeChunkBytes;
-  await writeFile('public/runtime/' + wasm + '.' + index + '.bin', gzipSync(binary.subarray(offset, offset + runtimeChunkBytes)));
-}
+await copyFile('node_modules/tesseract.js/dist/worker.min.js', 'public/runtime/worker.min.js');
+await copyFile('node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js', 'public/runtime/tesseract-core-lstm.wasm.js');

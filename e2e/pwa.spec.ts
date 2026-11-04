@@ -1,14 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { join, basename } from 'node:path';
-import { createReadStream, statSync } from 'node:fs';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 
 test.use({
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+  viewport: { width: 390, height: 844 },
 });
 
-test('installs the shell, preserves settings, and starts and freezes a camera preview offline', async ({ page, context }) => {
+test('converts a manual peso amount and saves the rate offline', async ({ page, context }) => {
   await page.goto('/');
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -16,144 +14,77 @@ test('installs the shell, preserves settings, and starts and freezes a camera pr
   });
   const manifest = await page.request.get('/manifest.webmanifest');
   expect(manifest.ok()).toBe(true);
-  const info = await manifest.json();
-  expect(info.display).toBe('standalone');
-  for (const icon of info.icons) expect((await page.request.get(icon.src)).ok()).toBe(true);
-  await page.getByLabel('PHP per JPY').fill('0.39');
-  await page.getByLabel('English translation').uncheck();
+  expect((await manifest.json()).display).toBe('standalone');
+  await expect(page.getByLabel('PHP per JPY')).toHaveValue('0.40');
+  await page.getByLabel('Amount in PHP').fill('1760');
+  await expect(page.getByLabel('Amount in yen')).toHaveText('¥4,400');
+  await page.getByLabel('PHP per JPY').fill('0.50');
+  await expect(page.getByLabel('Amount in yen')).toHaveText('¥3,520');
   await context.setOffline(true);
-  await page.goto('/offline-check');
-  await expect(page.getByRole('heading', { name: 'NihonLens' })).toBeVisible();
-  await expect(page.getByLabel('PHP per JPY')).toHaveValue('0.39');
-  await expect(page.getByLabel('English translation')).not.toBeChecked();
-  await expect(page.getByRole('status')).toHaveText(/needs a download/);
-  await page.getByRole('button', { name: 'Start camera' }).click();
-  await expect(page.getByRole('button', { name: 'Stop camera' })).toBeVisible();
-  await page.getByRole('button', { name: 'Freeze & scan' }).click();
-  await expect(page.locator('video')).toHaveJSProperty('paused', true);
-  await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.locator('video')).toHaveJSProperty('paused', false);
+  await page.reload();
+  await expect(page.getByLabel('PHP per JPY')).toHaveValue('0.50');
 });
 
-test('runs actual Japanese OCR and translation after offline reload and detects eviction', async ({ page, context }) => {
-  test.skip(!process.env.NIHON_MODEL_DIR && !process.env.NIHON_LIVE_DOWNLOAD,
-    'Set NIHON_MODEL_DIR to verified local model artifacts, or NIHON_LIVE_DOWNLOAD=1 to exercise public downloads.');
-  const fixtureDir = process.env.NIHON_MODEL_DIR;
-  const fixtureServer = fixtureDir ? createServer((request, response) => {
-    const file = join(fixtureDir, basename(request.url ?? ''));
-    try {
-      const { size } = statSync(file);
-      response.writeHead(200, { 'access-control-allow-origin': '*', 'content-length': size });
-      createReadStream(file).pipe(response);
-    } catch { response.writeHead(404).end(); }
-  }) : undefined;
-  if (fixtureServer) {
-    await new Promise<void>(resolve => fixtureServer.listen(0, '127.0.0.1', resolve));
-    const { port } = fixtureServer.address() as AddressInfo;
-    await context.route(/https:\/\/(huggingface\.co|raw\.githubusercontent\.com)\//, route =>
-      route.fulfill({ status: 302, headers: { 'access-control-allow-origin': '*',
-        location: 'http://127.0.0.1:' + port + '/' + basename(new URL(route.request().url()).pathname) } }));
+test('scans live yen prices on the iPhone path after an offline reload', async ({ page, context }) => {
+  const fixture = process.env.NIHON_MODEL_DIR;
+  test.skip(!fixture && !process.env.NIHON_LIVE_DOWNLOAD, 'Set NIHON_MODEL_DIR or NIHON_LIVE_DOWNLOAD=1.');
+  if (fixture) {
+    await context.route('https://raw.githubusercontent.com/**/jpn.traineddata', route =>
+      route.fulfill({ path: join(fixture, 'jpn.traineddata'), headers: { 'access-control-allow-origin': '*' } }));
   }
-  try {
-    page.on('console', message => { if (process.env.NIHON_TRACE || message.type() === 'error' || message.type() === 'warning') console.log(message.text()); });
-    if (process.env.NIHON_TRACE) context.on('response', response => console.log(response.status(), response.url().split('?')[0], response.fromServiceWorker()));
-    page.on('requestfailed', request => console.log(request.url(), request.failure()?.errorText));
-    await page.goto('/');
-    await expect(page.getByRole('status')).toHaveText(/needs a download/);
-    await page.getByRole('button', { name: 'Download / retry pack' }).click();
-    await expect(page.getByRole('status')).toHaveText(/Offline OCR ready|Pack unavailable/, { timeout: 390_000 });
-    await expect(page.getByRole('status')).toHaveText(/Offline OCR ready/);
-    if (fixtureDir) await context.unrouteAll();
-    await context.setOffline(true);
-    await page.addInitScript(() => {
-      navigator.mediaDevices.getUserMedia = async () => {
-        const image = new Image();
-        image.src = '/camera-ja.png';
-        await image.decode();
-        const canvas = document.createElement('canvas');
-        canvas.width = image.width;
-        canvas.height = image.height;
-        const surface = canvas.getContext('2d')!;
-        const stream = canvas.captureStream(8);
-        const paint = () => surface.drawImage(image, 0, 0);
-        paint();
-        const timer = window.setInterval(paint, 100);
-        window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
-        return stream;
-      };
-    });
-    await page.reload();
-    await expect(page.getByRole('status')).toHaveText(/Offline OCR ready/, { timeout: 90_000 });
-    await expect(page.getByLabel('English translation')).not.toBeChecked();
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByLabel('PHP per JPY')).toHaveValue('0.40');
-    await expect(page.getByLabel('Vertical Japanese')).not.toBeChecked();
-    await page.getByRole('button', { name: 'Start camera' }).click();
-    await expect(page.locator('.overlay')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Freeze & scan' }).click();
-    await expect(page.locator('.overlay').filter({ hasText: 'PHP 512.00' })).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toHaveCount(0);
-    await expect(page.getByText('Text found. English translation is off.')).toBeVisible();
-    await expect(page.locator('.overlay').filter({ hasText: /こ\s*ん\s*に\s*ち\s*は/ })).toBeVisible();
-    await page.getByRole('button', { name: 'Translate this frame' }).click();
-    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 80_000 });
-    await expect(page.getByRole('region', { name: 'Scan results' })).toContainText(/hello/i);
-    await expect(page.locator('canvas.frozen-preview')).toBeVisible();
-    const englishBox = await page.locator('.overlay').filter({ hasText: /hello/i }).boundingBox();
-    const yenBox = await page.getByRole('button', { name: 'PHP 512.00' }).boundingBox();
-    expect(englishBox && yenBox && englishBox.y < yenBox.y).toBe(true);
-    await page.getByRole('button', { name: 'PHP 512.00' }).click();
-    await expect(page.getByText('Original Japanese')).toBeVisible();
-    await expect(page.locator('aside [lang=ja]')).toHaveText(/1,280\s*円/);
-    await page.getByLabel('English translation').uncheck();
-    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toHaveCount(0);
-    await page.getByLabel('PHP per JPY').fill('0.50');
-    await expect(page.getByRole('button', { name: 'PHP 640.00' })).toBeVisible();
-    await page.getByLabel('Yen conversion').uncheck();
-    await expect(page.getByRole('button', { name: 'PHP 640.00' })).toHaveCount(0);
-    await expect(page.locator('.overlay').filter({ hasText: /こ\s*ん\s*に\s*ち\s*は/ })).toBeVisible();
-    await page.getByRole('button', { name: 'Select text area' }).click();
-    const cameraPreview = page.getByRole('region', { name: 'Camera preview' });
-    await cameraPreview.scrollIntoViewIfNeeded();
-    const preview = (await cameraPreview.boundingBox())!;
-    const scale = Math.min(preview.width / 960, preview.height / 600);
-    const left = preview.x + (preview.width - 960 * scale) / 2;
-    const top = preview.y + (preview.height - 600 * scale) / 2;
-    await page.mouse.move(left + 205 * scale, top + 115 * scale);
-    await page.mouse.down();
-    await page.mouse.move(left + 720 * scale, top + 255 * scale, { steps: 4 });
-    await page.mouse.up();
-    const focused = page.getByRole('region', { name: 'Scan results' });
-    await expect(focused).toContainText(/こ\s*ん\s*に\s*ち\s*は/, { timeout: 20_000 });
-    await expect(focused).not.toContainText('1,280');
-    await expect(page.locator('.focus-box')).toBeVisible();
-    await page.evaluate(async () => {
-      const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
-      const cache = await caches.open(name);
-      const asset = (await cache.keys()).find(key => key.url.endsWith('tokenizer.json'))!;
-      await cache.put(asset, new Response('broken', { headers: { 'content-length': '6' } }));
-    });
-    await page.evaluate(() => sessionStorage.setItem('nihonlens.translation-in-progress', 'yes'));
-    await page.reload();
-    await expect(page.getByRole('status')).toHaveText(/needs a download/);
-    await expect(page.getByRole('alert')).toHaveText(/English translation/);
-    await expect(page.getByLabel('English translation')).not.toBeChecked();
-    await page.getByRole('button', { name: 'Delete pack' }).click();
-    await expect(page.getByRole('status')).toHaveText(/deleted/);
-  } finally { fixtureServer?.close(); }
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Download scanner' }).click();
+  await expect(page.getByRole('status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
+  await page.evaluate(async () => {
+    const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
+    const cache = await caches.open(name);
+    const marker = (await cache.keys()).find(key => key.url.endsWith('complete.json'))!;
+    await cache.put(new URL('marian/tokenizer.json', marker.url), new Response('{}'));
+  });
+  if (fixture) await context.unrouteAll();
+  await context.setOffline(true);
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const image = new Image();
+      image.src = '/camera-ja.png';
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const paint = () => canvas.getContext('2d')!.drawImage(image, 0, 0);
+      const stream = canvas.captureStream(8);
+      paint();
+      const timer = window.setInterval(paint, 100);
+      stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
+      return stream;
+    };
+  });
+  await page.reload();
+  await expect(page.getByRole('status')).toHaveText('Offline scanner ready', { timeout: 60_000 });
+  const retiredAssets = await page.evaluate(async () => {
+    const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
+    return (await (await caches.open(name)).keys()).some(key => key.url.includes('/marian/'));
+  });
+  expect(retiredAssets).toBe(false);
+  await page.getByRole('button', { name: 'Start camera' }).click();
+  await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
+  await expect(page.getByRole('region', { name: 'Detected prices' })).toContainText('¥1,280 → ₱512.00');
+  await page.getByLabel('PHP per JPY').fill('0.50');
+  await expect(page.locator('.overlay')).toHaveText('₱640.00');
+  await page.getByRole('button', { name: 'Stop camera' }).click();
+  await expect(page.locator('.overlay')).toHaveCount(0);
 });
 
-test('retries a transient failure and rejects an invalid pack download', async ({ page, context }) => {
+test('retries transient failures and rejects incomplete scanner files', async ({ page, context }) => {
   let attempts = 0;
-  await context.route(/huggingface\.co\/.*\/config\.json\?/, route => route.fulfill({
+  await context.route('https://raw.githubusercontent.com/**/jpn.traineddata', route => route.fulfill({
     status: ++attempts === 1 ? 503 : 200,
-    body: 'truncated model configuration',
+    body: 'truncated data',
     headers: { 'access-control-allow-origin': '*' },
   }));
   await page.goto('/');
-  await expect(page.getByRole('status')).toHaveText(/needs a download/);
-  await page.getByRole('button', { name: 'Download / retry pack' }).click();
-  await expect(page.getByRole('status')).toHaveText(/Could not save or verify marian\/config\.json/);
+  await page.getByRole('button', { name: 'Download scanner' }).click();
+  await expect(page.getByRole('status')).toHaveText(/Scanner unavailable/);
   expect(attempts).toBe(2);
   expect(await page.evaluate(async () => (await caches.keys()).some(key => key.startsWith('nihonlens-pack-')))).toBe(false);
 });

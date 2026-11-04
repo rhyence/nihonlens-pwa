@@ -1,442 +1,234 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Engines } from './engines';
 import { controlled, downloadPack, removePack, verifyInstalled } from './pack';
-import { packBytes, packVersion } from './pack-info';
-import { convert, fill, FrameGate, menuTranslation, prepareFocus, Tracker, TranslationCache, yen, type Box, type Track } from './vision';
+import { packBytes } from './pack-info';
+import { convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track } from './vision';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import './style.css';
 
-const scanOnFreeze = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-const interruptionKey = 'nihonlens.translation-in-progress';
-function translationInterrupted() {
-  try { return sessionStorage.getItem(interruptionKey) === 'yes'; }
-  catch { return false; }
-}
-function recordTranslation(active: boolean) {
-  try {
-    if (active) sessionStorage.setItem(interruptionKey, 'yes');
-    else sessionStorage.removeItem(interruptionKey);
-  } catch { /* Browser storage may be unavailable. */ }
-}
-
 function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
-  const [mobileTranslation, setMobileTranslation] = useState(false);
-  const [interrupted, setInterrupted] = useState(() => scanOnFreeze && translationInterrupted());
-  const translationEnabled = scanOnFreeze ? mobileTranslation : settings.translate;
-  const [status, setStatus] = useState('Checking offline pack…');
+  const [pesos, setPesos] = useState('');
+  const [status, setStatus] = useState('Checking offline scanner…');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
   const [camera, setCamera] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [frozen, setFrozen] = useState(false);
-  const [scanMessage, setScanMessage] = useState('');
-  const [focus, setFocus] = useState<Box>();
-  const [selection, setSelection] = useState<Box>();
-  const [selecting, setSelecting] = useState(false);
-  const dragStart = useRef<{ x: number; y: number } | undefined>(undefined);
-  const still = useRef<HTMLCanvasElement | undefined>(undefined);
-  const frozenPreview = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [selected, setSelected] = useState<Track>();
-  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [view, setView] = useState({ w: 0, h: 0 });
   const [source, setSource] = useState({ w: 0, h: 0 });
   const video = useRef<HTMLVideoElement>(null);
   const preview = useRef<HTMLDivElement>(null);
-  const engines = useRef<Engines | undefined>(undefined);
+  const stream = useRef<MediaStream | undefined>(undefined);
+  const engine = useRef<Engines | undefined>(undefined);
   const abort = useRef<AbortController | undefined>(undefined);
   const gate = useRef(new FrameGate());
   const tracker = useRef(new Tracker());
-  const translations = useRef(new TranslationCache());
-  const stream = useRef<MediaStream | undefined>(undefined);
 
   async function prepare(download: boolean) {
+    if (abort.current) return;
     const controller = new AbortController();
     abort.current = controller;
     setBusy(true);
     setReady(false);
+    setError('');
     setTracks([]);
-    setSelected(undefined);
     tracker.current.clear();
     gate.current.invalidate();
     try {
+      await engine.current?.close();
+      engine.current = undefined;
       if (download) {
         void navigator.storage?.persist?.().catch(() => false);
         await downloadPack(setStatus, controller.signal);
-      } else {
-        if (!(await verifyInstalled(controller.signal))) {
-          setStatus('Japanese offline pack needs a download.');
-          return;
-        }
-        await controlled();
+      } else if (!(await verifyInstalled(controller.signal))) {
+        setStatus('Download the offline scanner to use your camera.');
+        return;
       }
-      setStatus(scanOnFreeze ? 'Verifying Japanese text recognition…' : 'Verifying Japanese OCR and English translation…');
-      const engine = new Engines(scanOnFreeze);
-      await engines.current?.close();
-      engines.current = engine;
-      await engine.smokeTest(!scanOnFreeze);
+      await controlled();
+      setStatus('Verifying offline text recognition…');
+      const next = new Engines();
+      engine.current = next;
+      await next.smokeTest();
       controller.signal.throwIfAborted();
       setReady(true);
-      setStatus(scanOnFreeze ? 'Offline OCR ready. English translation is optional on iPhone and iPad.' : 'Offline Ready');
-    } catch (error) {
-      await engines.current?.close();
-      engines.current = undefined;
-      setStatus(controller.signal.aborted ? 'Download canceled. Retry when online.' :
-        'Pack unavailable. Retry download. ' + (error instanceof Error ? error.message : String(error)));
+      setStatus('Offline scanner ready');
+    } catch (failure) {
+      await engine.current?.close();
+      engine.current = undefined;
+      setStatus(controller.signal.aborted ? 'Download canceled.' : 'Scanner unavailable. Verify or download it again.');
+      if (!controller.signal.aborted) setError(String(failure));
     } finally {
       abort.current = undefined;
       setBusy(false);
     }
   }
 
-  useEffect(() => {
-    void prepare(false);
-    const node = preview.current!;
-    const observer = new ResizeObserver(([entry]) => setSize({ w: entry.contentRect.width, h: entry.contentRect.height }));
-    observer.observe(node);
-    const pagehide = () => { stream.current?.getTracks().forEach(track => track.stop()); };
-    window.addEventListener('pagehide', pagehide);
-    return () => {
-      window.removeEventListener('pagehide', pagehide);
-      observer.disconnect();
-      pagehide();
-      abort.current?.abort();
-      void engines.current?.close();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (settings !== initialSettings) void saveSettings(settings).catch(() => setNotice('Browser storage is unavailable. Settings may reset on reload.'));
-  }, [settings, initialSettings]);
-
-  useEffect(() => {
-    if (!ready || !camera || (!frozen && !translationEnabled && !settings.currency) || (scanOnFreeze && !frozen)) return;
-    const surface = document.createElement('canvas');
-    const context = surface.getContext('2d')!;
-    const frameGate = gate.current;
-    let timer: ReturnType<typeof setTimeout>;
-    let running = true;
-    const scan = async () => {
-      const element = video.current;
-      const snapshot = frozen ? still.current : undefined;
-      if (frozen && !snapshot) return;
-      const liveFrame = element?.videoWidth && element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
-      if (document.visibilityState === 'visible' && (snapshot || liveFrame) && engines.current) {
-        try {
-          const engine = engines.current;
-          const width = snapshot?.width ?? element!.videoWidth;
-          const height = snapshot?.height ?? element!.videoHeight;
-          const scale = Math.min(1, 960 / Math.max(width, height));
-          const processed = await frameGate.run(async () => {
-            if (frozen) setScanMessage('Reading frozen frame…');
-            surface.width = Math.round(width * scale);
-            surface.height = Math.round(height * scale);
-            if (!snapshot) context.drawImage(element!, 0, 0, surface.width, surface.height);
-            const remap = snapshot && focus ? prepareFocus(snapshot, focus, surface) : undefined;
-            let readings = await engine.read(remap ? surface : snapshot ?? surface, settings.vertical, frozen, Boolean(remap));
-            if (remap) readings = readings.map(remap).filter(reading => reading.box.w > 0 && reading.box.h > 0);
-            if (scanOnFreeze) await engine.releaseOcr();
-            if (frozen && running && document.visibilityState === 'visible') {
-              setSource({ w: width, h: height });
-              setTracks(readings.map((reading, id) => ({ ...reading, id, hits: 2, seen: performance.now() })));
-              if (translationEnabled && readings.length) setScanMessage('Translating frozen frame…');
-            }
-            let translationFailed = false;
-            let modelTranslated = false;
-            if (translationEnabled && running && document.visibilityState === 'visible') {
-              try {
-                for (const reading of readings.slice(0, 4)) {
-                  if (!running || document.visibilityState !== 'visible') break;
-                  const term = menuTranslation(reading.text);
-                  if (term) { reading.english = term; continue; }
-                  if (reading.confidence !== undefined && reading.confidence < 55) continue;
-                  reading.english = await translations.current.get(reading.text, async text => {
-                    if (scanOnFreeze) recordTranslation(true);
-                    const english = await engine.translate(text);
-                    modelTranslated ||= Boolean(english);
-                    return english;
-                  });
-                }
-              } catch (error) {
-                if (!scanOnFreeze) throw error;
-                translationFailed = true;
-              } finally {
-                if (scanOnFreeze) {
-                  engine.releaseTranslation();
-                  recordTranslation(false);
-                }
-              }
-            }
-            if (scanOnFreeze && running && document.visibilityState === 'visible') {
-              if (translationFailed) {
-                setNotice('English translation stopped. Yen conversion is still available.');
-              } else if (modelTranslated) {
-                setStatus('Offline Ready');
-                setInterrupted(false);
-              }
-            }
-            return readings;
-          }, readings => {
-            if (document.visibilityState !== 'visible') return;
-            setSource({ w: width, h: height });
-            if (frozen) {
-              setTracks(readings.map((reading, id) => ({ ...reading, id, hits: 2, seen: performance.now() })));
-              setScanMessage(!readings.length ? 'No text found. Resume, move closer, and scan again.' :
-                readings.some(reading => reading.english) ? 'English translation complete.' :
-                !translationEnabled ? 'Text found. English translation is off.' :
-                'Text found. If the reading looks wrong, select just the line you want to scan.');
-            } else setTracks(tracker.current.update(readings, performance.now()));
-          });
-          if (frozen && processed && document.visibilityState === 'visible') return;
-        } catch (error) {
-          setScanMessage('');
-          setReady(false);
-          await engines.current?.close();
-          engines.current = undefined;
-          setTracks([]);
-          setStatus('Inference stopped. Verify or redownload the offline pack.');
-          setNotice(error instanceof Error ? error.message : String(error));
-        }
-      }
-      if (running) timer = setTimeout(scan, 500);
-    };
-    const visibility = () => frameGate.invalidate();
-    document.addEventListener('visibilitychange', visibility);
-    void scan();
-    return () => {
-      running = false;
-      frameGate.invalidate();
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', visibility);
-    };
-  }, [ready, camera, frozen, focus, translationEnabled, settings.currency, settings.vertical]);
-
   function stopCamera() {
     gate.current.invalidate();
-    still.current = undefined;
-    setScanMessage('');
-    setFocus(undefined);
-    setSelection(undefined);
-    setSelecting(false);
-    dragStart.current = undefined;
     stream.current?.getTracks().forEach(track => track.stop());
     stream.current = undefined;
     if (video.current) video.current.srcObject = null;
     tracker.current.clear();
-    setCamera(false);
-    setFrozen(false);
     setTracks([]);
-    setSelected(undefined);
+    setCamera(false);
   }
 
   async function startCamera() {
-    setNotice('');
+    setError('');
     setStarting(true);
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access requires HTTPS and a supported browser.');
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access requires HTTPS.');
       stream.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
       });
-      const node = video.current!;
-      node.srcObject = stream.current;
-      await node.play();
+      video.current!.srcObject = stream.current;
+      await video.current!.play();
       setCamera(true);
-    } catch (error) {
+    } catch (failure) {
       stopCamera();
-      setNotice('Camera unavailable. Check browser permission and close other camera apps. ' + String(error));
-    } finally { setStarting(false); }
+      setError('Camera unavailable. Check camera permission. ' + String(failure));
+    } finally {
+      setStarting(false);
+    }
   }
 
-  async function toggleFreeze() {
-    gate.current.invalidate();
-    if (frozen) {
-      try { await video.current?.play(); } catch (error) { setNotice(String(error)); return; }
-      setSelected(undefined);
-      still.current = undefined;
-      setScanMessage('');
-      setFocus(undefined);
-      setSelection(undefined);
-      setSelecting(false);
-      dragStart.current = undefined;
+  useEffect(() => {
+    void prepare(false);
+    const observer = new ResizeObserver(([entry]) => setView({ w: entry.contentRect.width, h: entry.contentRect.height }));
+    observer.observe(preview.current!);
+    window.addEventListener('pagehide', stopCamera);
+    return () => {
+      window.removeEventListener('pagehide', stopCamera);
+      observer.disconnect();
+      stream.current?.getTracks().forEach(track => track.stop());
+      abort.current?.abort();
+      void engine.current?.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (settings !== initialSettings) void saveSettings(settings).catch(() => setError('Could not save the exchange rate.'));
+  }, [settings, initialSettings]);
+
+  useEffect(() => {
+    if (!camera || !ready) return;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+    const frameGate = gate.current;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const scan = async () => {
+      const frame = video.current;
+      const ocr = engine.current;
+      if (document.visibilityState === 'visible' && frame?.videoWidth &&
+          frame.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && ocr) {
+        const { videoWidth: w, videoHeight: h } = frame;
+        const scale = Math.min(1, 960 / Math.max(w, h));
+        try {
+          await frameGate.run(async () => {
+            canvas.width = Math.round(w * scale);
+            canvas.height = Math.round(h * scale);
+            context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+            return yenReadings(await ocr.read(canvas));
+          }, readings => {
+            setSource({ w, h });
+            setTracks(tracker.current.update(readings, performance.now()));
+          });
+        } catch (failure) {
+          stopCamera();
+          setReady(false);
+          setStatus('Scanner stopped. Verify it to try again.');
+          setError(String(failure));
+        }
+      }
+      if (active) timer = setTimeout(scan, 650);
+    };
+    const visibility = () => {
+      frameGate.invalidate();
       tracker.current.clear();
       setTracks([]);
-    } else {
-      const element = video.current;
-      if (!element?.videoWidth || element.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        setScanMessage('The camera is still starting. Wait for the preview, then tap again.');
-        return;
-      }
-      const frame = frozenPreview.current!;
-      const scale = Math.min(1, 1440 / Math.max(element.videoWidth, element.videoHeight));
-      frame.width = Math.round(element.videoWidth * scale);
-      frame.height = Math.round(element.videoHeight * scale);
-      frame.getContext('2d')!.drawImage(element, 0, 0, frame.width, frame.height);
-      still.current = frame;
-      element.pause();
-      setTracks([]);
-      setScanMessage(ready ? 'Reading frozen frame…' : busy ? 'Checking the offline pack. The scan will start when it is ready.' :
-        'The offline pack is unavailable. Download or verify it below.');
-    }
-    setFrozen(!frozen);
-  }
-
-  function focusPoint(event: PointerEvent<HTMLElement>) {
-    const frame = still.current;
-    if (!frame) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const displayed = fill({ x: 0, y: 0, w: 1, h: 1 }, frame.width, frame.height, rect.width, rect.height, 'contain');
-    const clamp = (value: number) => Math.max(0, Math.min(1, value));
-    return {
-      x: clamp((event.clientX - rect.left - displayed.x) / displayed.w),
-      y: clamp((event.clientY - rect.top - displayed.y) / displayed.h),
     };
-  }
+    document.addEventListener('visibilitychange', visibility);
+    void scan();
+    return () => {
+      active = false;
+      frameGate.invalidate();
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [camera, ready]);
 
-  function pickArea(event: PointerEvent<HTMLElement>, finish: boolean) {
-    const from = dragStart.current;
-    const to = focusPoint(event);
-    if (!from || !to) return;
-    const box = { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), w: Math.abs(from.x - to.x), h: Math.abs(from.y - to.y) };
-    if (!finish) { setSelection(box); return; }
-    dragStart.current = undefined;
-    setSelection(undefined);
-    if (box.w < 0.025 || box.h < 0.025) {
-      setScanMessage('Drag a box around a dish name or price.');
-      return;
-    }
-    gate.current.invalidate();
-    setSelecting(false);
-    setSelected(undefined);
-    setTracks([]);
-    setScanMessage('Reading selected area…');
-    setFocus(box);
-  }
-
-  function label(track: Track) {
-    const price = yen(track.text);
-    const converted = settings.currency && price !== undefined
-      ? [settings.units !== 'USD' && convert(price, settings.php, 'PHP'),
-         settings.units !== 'PHP' && convert(price, settings.usd, 'USD')].filter(Boolean).join(' / ')
-      : '';
-    return [translationEnabled && track.english, converted].filter(Boolean).join(' · ') || (frozen ? track.text : '');
+  const rate = settings.php;
+  const validRate = /^\d{0,8}(?:\.\d{1,10})?$/.test(rate) && Number(rate) > 0;
+  const manual = pesosToYen(pesos, rate);
+  function display(track: Track) {
+    const amount = yen(track.text);
+    return amount === undefined || !validRate ? undefined : convert(amount, rate, 'PHP')?.replace('PHP ', '₱');
   }
 
   return <main>
-    <header><p className="eyebrow">ON-DEVICE JAPANESE CAMERA</p><h1>NihonLens</h1><p>Translate signs and convert yen prices as you look.</p></header>
-    <section className={selecting ? 'view selecting' : 'view'} ref={preview} aria-label="Camera preview"
-      onPointerDown={event => {
-        if (!selecting || !event.isPrimary) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        dragStart.current = focusPoint(event);
-      }}
-      onPointerMove={event => { if (selecting && event.isPrimary) pickArea(event, false); }}
-      onPointerUp={event => { if (selecting && event.isPrimary) pickArea(event, true); }}
-      onPointerCancel={() => { dragStart.current = undefined; setSelection(undefined); }}>
-      <video ref={video} muted playsInline hidden={frozen} />
-      <canvas ref={frozenPreview} className="frozen-preview" hidden={!frozen} aria-label="Frozen camera frame" />
-      {!camera && <p className="hint">Start the camera to scan Japanese text.</p>}
-      {!selecting && source.w > 0 && size.w > 0 && tracks.map(track => {
-        const value = label(track);
-        const box = fill(track.box, source.w, source.h, size.w, size.h, frozen ? 'contain' : 'cover');
-        if (!value || box.x + box.w < 0 || box.y + box.h < 0 || box.x > size.w || box.y > size.h) return null;
-        const labelWidth = Math.min(200, Math.max(112, box.w), size.w - 8);
-        const centerX = box.x + box.w / 2;
-        const left = Math.max(4, Math.min(size.w - labelWidth - 4, centerX - labelWidth / 2));
-        const top = Math.max(4, Math.min(size.h - 48, box.y));
-        return <button className="overlay" key={track.id} style={{ left, top, width: labelWidth }}
-          onClick={() => setSelected(track)}>{value}</button>;
+    <header><p className="eyebrow">OFFLINE YEN PRICE SCANNER</p><h1>NihonLens</h1><p>Hold your camera over a yen price to see it in Philippine pesos.</p></header>
+    <section className="view" ref={preview} aria-label="Camera preview">
+      <video ref={video} muted playsInline />
+      {!camera && <p className="hint">Start the camera and point it at a price such as ¥500 or 500円.</p>}
+      {camera && view.w > 8 && source.w > 0 && tracks.map(track => {
+        const price = display(track);
+        const box = fill(track.box, source.w, source.h, view.w, view.h);
+        if (!price || box.x + box.w < 0 || box.y + box.h < 0 || box.x > view.w || box.y > view.h) return null;
+        const width = Math.min(156, view.w - 8);
+        const left = Math.max(4, Math.min(view.w - width - 4, box.x + box.w / 2 - width / 2));
+        const top = Math.max(4, Math.min(view.h - 44, box.y));
+        return <span className="overlay price" key={track.id} style={{ width, left, top }}>{price}</span>;
       })}
-      {(selection ?? focus) && still.current && size.w > 0 && <div className="focus-box" aria-hidden="true"
-        style={(() => {
-          const box = fill((selection ?? focus)!, still.current.width, still.current.height, size.w, size.h, 'contain');
-          return { left: box.x, top: box.y, width: box.w, height: box.h };
-        })()} />}
     </section>
     <div className="row">
-      <button disabled={starting} onClick={camera ? stopCamera : () => void startCamera()}>{camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}</button>
-      <button disabled={!camera} onClick={() => void toggleFreeze()}>{frozen ? 'Resume' : scanOnFreeze ? 'Freeze & scan' : 'Freeze'}</button>
-      {frozen && ready && <button onClick={() => {
-        setSelecting(!selecting);
-        setSelection(undefined);
-        dragStart.current = undefined;
-        if (!selecting) setScanMessage('Drag a box around a dish name or price.');
-      }}>{selecting ? 'Cancel selection' : 'Select text area'}</button>}
-      {frozen && focus && !selecting && <button onClick={() => {
-        gate.current.invalidate();
-        setFocus(undefined);
-        setSelected(undefined);
-        setTracks([]);
-        setScanMessage('Reading full frame…');
-      }}>Scan full frame</button>}
+      <button disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
+        {camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}
+      </button>
     </div>
-    {camera && scanOnFreeze && !frozen && <p>Tap Freeze &amp; scan to read a still frame.</p>}
-    {interrupted && <p role="alert">The last English translation was interrupted. You can still scan yen prices. Enable English translation to try it again.</p>}
-    {scanMessage && <p aria-live="polite">{scanMessage}</p>}
-    {scanOnFreeze && frozen && ready && tracks.length > 0 && !translationEnabled &&
-      <button onClick={() => { setMobileTranslation(true); setInterrupted(false); setNotice(''); }}>
-        Translate this frame
-      </button>}
-    {frozen && tracks.length > 0 && <section className="panel" aria-label="Scan results">
-      <h2>Scan results</h2>
-      <ul>{tracks.map(track => <li key={track.id}>
-        <span lang="ja">{track.text}</span>
-        {track.confidence !== undefined && track.confidence < 55 && !track.english && <small> · Check reading</small>}
-        {label(track) !== track.text && <div>{label(track)}</div>}
-      </li>)}</ul>
+    {camera && <p>{tracks.length ? 'Yen prices found' : 'Hold steady with the yen symbol or 円 in view…'}</p>}
+    {tracks.length > 0 && <section className="panel" aria-label="Detected prices">
+      <h2>Detected prices</h2>
+      <ul>{tracks.map(track => <li key={track.id}>{track.text}{display(track) && <> → {display(track)}</>}</li>)}</ul>
     </section>}
-    {selected && <aside><strong>Original Japanese</strong><p lang="ja">{selected.text}</p><button onClick={() => setSelected(undefined)}>Close</button></aside>}
-    {notice && <p role="alert">{notice}</p>}
+    {error && <p role="alert">{error}</p>}
+    <section className="panel settings">
+      <h2>Exchange rate</h2>
+      <label>PHP per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings({ php: event.target.value })} /></label>
+      <small>{validRate ? 'This is a manual rate. Edit it whenever you need to.' : 'Enter a positive PHP amount for ¥1.'}</small>
+      <h2>Pesos to yen</h2>
+      <label>Amount in PHP <input inputMode="decimal" value={pesos} onChange={event => setPesos(event.target.value)} placeholder="0.00" /></label>
+      {manual && <output aria-label="Amount in yen">{manual}</output>}
+    </section>
     <section className="panel">
-      <h2>Japanese offline pack</h2>
+      <h2>Offline scanner</h2>
       <p role="status">{status}</p>
-      <small>{packVersion} · {Math.ceil(packBytes / 1e6)} MB download · Keep this tab open</small>
+      <small>About {Math.ceil(packBytes / 1e6)} MB. Camera frames stay on your device.</small>
       <div className="row">
-        <button disabled={busy} onClick={() => void prepare(true)}>{ready ? 'Redownload pack' : 'Download / retry pack'}</button>
-        <button disabled={busy} onClick={() => void prepare(false)}>Verify pack</button>
-        {busy ? <button onClick={() => { abort.current?.abort(); void engines.current?.close(); }}>Cancel</button> :
-          <button onClick={async () => {
-            setBusy(true);
-            setReady(false);
-            gate.current.invalidate();
-            setSelected(undefined);
-            setTracks([]);
-            tracker.current.clear();
-            try {
-              await engines.current?.close();
-              engines.current = undefined;
-              await removePack();
-              setStatus('Japanese offline pack deleted.');
-            } catch (error) { setStatus('Could not delete pack. ' + String(error)); }
-            finally { setBusy(false); }
-          }}>Delete pack</button>}
+        {!ready && <button disabled={busy} onClick={() => void prepare(true)}>Download scanner</button>}
+        <button disabled={busy} onClick={() => void prepare(false)}>Verify scanner</button>
+        {busy && <button onClick={() => abort.current?.abort()}>Cancel</button>}
+        {ready && <button onClick={async () => {
+          stopCamera();
+          setReady(false);
+          try {
+            await engine.current?.close();
+            engine.current = undefined;
+            await removePack();
+            setStatus('Offline scanner deleted.');
+          } catch (failure) {
+            setError(String(failure));
+            setStatus('Could not delete the offline scanner.');
+          }
+        }}>Delete scanner</button>}
       </div>
     </section>
-    <section className="panel settings">
-      <h2>Settings</h2>
-      <label><input type="checkbox" checked={translationEnabled} onChange={e => {
-        if (scanOnFreeze) {
-          setMobileTranslation(e.target.checked);
-          setNotice('');
-          if (e.target.checked) setInterrupted(false);
-        } else setSettings({ ...settings, translate: e.target.checked });
-      }} /> English translation</label>
-      <label><input type="checkbox" checked={settings.currency} onChange={e => setSettings({ ...settings, currency: e.target.checked })} /> Yen conversion</label>
-      <label><input type="checkbox" checked={settings.vertical} onChange={e => {
-        tracker.current.clear(); setTracks([]); setSelected(undefined);
-        setSettings({ ...settings, vertical: e.target.checked });
-      }} /> Vertical Japanese</label>
-      <label>Convert to <select value={settings.units} onChange={e => setSettings({ ...settings, units: e.target.value })}>
-        <option>PHP</option><option>USD</option><option value="both">PHP and USD</option>
-      </select></label>
-      <label>PHP per JPY <input inputMode="decimal" value={settings.php} onChange={e => setSettings({ ...settings, php: e.target.value })} placeholder="Enter manual rate" /></label>
-      <label>USD per JPY <input inputMode="decimal" value={settings.usd} onChange={e => setSettings({ ...settings, usd: e.target.value })} placeholder="Enter manual rate" /></label>
-    </section>
-    <details><summary>Install NihonLens</summary><p>On iPhone, open in Safari and choose Share → Add to Home Screen. On Android, use Chrome’s Install app or Add to Home screen menu. Open the installed app and verify the Japanese pack before going offline.</p></details>
   </main>;
 }
 
-void loadSettings().then(initialSettings => createRoot(document.getElementById('root')!).render(<App initialSettings={initialSettings} />));
+void loadSettings().then(initialSettings =>
+  createRoot(document.getElementById('root')!).render(<App initialSettings={initialSettings} />));

@@ -26,3 +26,5 @@ small{color:#bdd2d8}
 
 .view.selecting{touch-action:none;cursor:crosshair}
 .focus-box{position:absolute;border:2px solid #86e3ce;pointer-events:none;z-index:1}
+.overlay.price{padding:.55rem .7rem;text-align:center;font-weight:700;pointer-events:none}
+output{font-size:1.25rem;font-weight:700;color:#86e3ce}

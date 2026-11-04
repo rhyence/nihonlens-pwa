@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { convert, fill, FrameGate, menuTranslation, Tracker, TranslationCache, yen } from './vision';
+import { convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -18,16 +18,15 @@ describe('yen', () => {
   });
 });
 
-it('bounds and normalizes translation cache keys', async () => {
-  const cache = new TranslationCache(1);
-  const translate = vi.fn(async () => 'Hello');
-  await cache.get(' こんにちは ', translate);
-  await cache.get('こんにちは', translate);
-  await cache.get('500円', translate);
-  expect(translate).toHaveBeenCalledTimes(1);
-  await cache.get('ありがとう', translate);
-  await cache.get('こんにちは', translate);
-  expect(translate).toHaveBeenCalledTimes(3);
+it('extracts explicit prices from a menu line and ignores quantities', () => {
+  const box = { x: 0, y: 0, w: 1, h: 0.1 };
+  const readings = yenReadings([{ text: '海鮮丼 ¥4,400 8個 お茶 500円', box }, { text: '人気5種・10貫', box }]);
+  expect(readings.map(reading => reading.text)).toEqual(['¥4,400', '¥500']);
+  expect(readings[0].box.x).toBeLessThan(readings[1].box.x);
+  expect(yenReadings([{ text: '価格 12.50円', box }])).toEqual([]);
+  expect(pesosToYen('1760', '0.40')).toBe('¥4,400');
+  expect(pesosToYen('1.01', '0.40')).toBe('¥3');
+  expect(pesosToYen('100', '0')).toBeUndefined();
 });
 
 it('drops overlapping work and rejects stale frames', async () => {
@@ -73,10 +72,7 @@ it('requires all versioned pack assets and rejects a truncated entry', async () 
   expect(await installed(cache)).toBe(false);
 });
 
-it('uses exact dish names and repairs grouped yen OCR readings', () => {
-  expect(menuTranslation('海 鮮 丼')).toBe('Seafood rice bowl');
-  expect(menuTranslation('うに丼')).toBe('Sea urchin rice bowl');
-  expect(menuTranslation('レボ 6 記 王')).toBeUndefined();
+it('repairs grouped yen OCR readings', () => {
   expect(yen('\\4.400。')).toBe(4400n);
   expect(yen('4.400')).toBeUndefined();
 });

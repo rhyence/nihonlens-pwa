@@ -1,6 +1,6 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
 import { packCache, packPath } from './pack-info';
-import { normalize, yen, type Reading } from './vision';
+import { normalize, yen, yenReadings, type Reading } from './vision';
 
 function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
   let timer: ReturnType<typeof setTimeout>;
@@ -12,27 +12,15 @@ function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
 
 export class Engines {
   private ocr?: OCR;
-  private translator?: Worker;
-  private pending?: { resolve: (result: string) => void; reject: (error: Error) => void };
-  private id = 0;
   private closed = false;
-  private vertical = false;
 
-  constructor(private readonly lowMemory = false) {}
-
-  async read(canvas: HTMLCanvasElement, vertical: boolean, thorough = false, focused = false): Promise<Reading[]> {
+  async read(canvas: HTMLCanvasElement): Promise<Reading[]> {
     if (this.closed) throw new Error('OCR stopped.');
-    if (!this.ocr || this.vertical !== vertical) {
-      await this.ocr?.terminate();
-      let workerPath = packPath + 'runtime/worker.min.js';
-      let workerUrl: string | undefined;
-      if (this.lowMemory) {
-        const cached = await (await caches.open(packCache)).match(workerPath);
-        if (!cached) throw new Error('The Japanese OCR worker is missing from the offline pack.');
-        workerUrl = URL.createObjectURL(await cached.blob());
-        workerPath = workerUrl;
-      }
-      const started = createWorker(vertical ? 'jpn_vert' : 'jpn', OEM.LSTM_ONLY, {
+    if (!this.ocr) {
+      const cached = await (await caches.open(packCache)).match(packPath + 'runtime/worker.min.js');
+      if (!cached) throw new Error('The Japanese OCR worker is missing from the offline pack.');
+      const workerPath = URL.createObjectURL(await cached.blob());
+      const started = createWorker('jpn', OEM.LSTM_ONLY, {
         workerPath, workerBlobURL: false,
         corePath: packPath + 'runtime/tesseract-core-lstm.wasm.js',
         langPath: packPath + 'ocr', cacheMethod: 'none', gzip: false,
@@ -43,13 +31,12 @@ export class Engines {
         void started.then(worker => worker.terminate(), () => {});
         throw error ?? new Error('Japanese OCR could not start.');
       } finally {
-        if (workerUrl) URL.revokeObjectURL(workerUrl);
+        URL.revokeObjectURL(workerPath);
       }
       if (this.closed) {
         await this.ocr.terminate();
         throw new Error('OCR stopped.');
       }
-      this.vertical = vertical;
     }
     const worker = this.ocr;
     const { width, height } = canvas;
@@ -68,43 +55,7 @@ export class Engines {
       }).slice(0, 30);
     };
 
-    const first = await recognize(vertical ? PSM.SINGLE_BLOCK_VERT_TEXT : focused ? PSM.SINGLE_LINE : PSM.SPARSE_TEXT);
-    if (vertical || !thorough) return first;
-    const useful = (readings: Reading[]) => readings.some(({ text }) =>
-      yen(text) !== undefined || /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]{2}/u.test(text.replace(/\s/g, '')));
-    if (useful(first)) return first;
-
-    // Sparse recognition can miss dense horizontal menus or tightly framed text.
-    for (const mode of focused ? [PSM.SPARSE_TEXT, PSM.SINGLE_BLOCK] : [PSM.AUTO, PSM.SINGLE_BLOCK]) {
-      if (this.closed) return [];
-      const retry = await recognize(mode);
-      if (useful(retry)) return retry;
-      if (retry.length > first.length) first.splice(0, first.length, ...retry);
-    }
-    return first;
-  }
-
-  translate(text: string): Promise<string> {
-    if (this.closed || this.pending) return Promise.reject(new Error('Translation is unavailable.'));
-    if (!this.translator) {
-      this.translator = new Worker(new URL('./translation.worker.ts', import.meta.url), { type: 'module' });
-      this.translator.onmessage = ({ data }) => {
-        if (data.id !== this.id) return;
-        const pending = this.pending;
-        this.pending = undefined;
-        if (data.error) pending?.reject(new Error(data.error));
-        else pending?.resolve(data.value);
-      };
-      this.translator.onerror = event => {
-        const pending = this.pending;
-        this.pending = undefined;
-        pending?.reject(new Error(event.message || 'Translation worker stopped.'));
-      };
-    }
-    return deadline(new Promise<string>((resolve, reject) => {
-      this.pending = { resolve, reject };
-      this.translator!.postMessage({ id: ++this.id, text, lowMemory: this.lowMemory });
-    }), 'English translation timed out.');
+    return recognize(PSM.SPARSE_TEXT);
   }
 
   async releaseOcr() {
@@ -113,39 +64,22 @@ export class Engines {
     await worker?.terminate();
   }
 
-  releaseTranslation() {
-    this.translator?.terminate();
-    this.translator = undefined;
-    this.pending?.reject(new Error('Translation stopped.'));
-    this.pending = undefined;
-  }
-
-  async smokeTest(verifyTranslation = true) {
-    let recognized = '';
-    for (const vertical of [true, false]) {
-      const image = new Image();
-      image.src = vertical ? '/smoke-vertical.png' : '/smoke-ja.png';
-      await image.decode();
-      const canvas = document.createElement('canvas');
-      canvas.width = image.width;
-      canvas.height = image.height;
-      canvas.getContext('2d')!.drawImage(image, 0, 0);
-      const lines = await this.read(canvas, vertical);
-      recognized = lines.map(line => line.text).join('').replace(/\s/g, '');
-      if (!recognized.includes('こんにちは')) {
-        throw new Error((vertical ? 'Vertical' : 'Horizontal') + ' Japanese OCR failed its verification image.');
-      }
+  async smokeTest() {
+    const image = new Image();
+    image.src = '/camera-ja.png';
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext('2d')!.drawImage(image, 0, 0);
+    const lines = await this.read(canvas);
+    if (!yenReadings(lines).some(reading => yen(reading.text) === 1280n)) {
+      throw new Error('The offline scanner could not read the test price.');
     }
-    if (this.lowMemory) await this.releaseOcr();
-    if (!verifyTranslation) return;
-    const translation = await this.translate(recognized);
-    if (!/hello|hi\b|good afternoon/i.test(translation)) throw new Error('Translation failed its Japanese verification sentence.');
-    return translation;
   }
 
   async close() {
     this.closed = true;
-    this.releaseTranslation();
     await this.releaseOcr();
   }
 }
