@@ -1,0 +1,20 @@
+import { expect, it } from 'vitest';
+import { restoreBox } from './image';
+
+it('keeps unrotated coordinates unchanged', () => {
+  const box = { x: 0.2, y: 0.3, w: 0.4, h: 0.1 };
+  const result = restoreBox(box, 640, 480, 640, 480, 0);
+  for (const key of ['x', 'y', 'w', 'h'] as const) expect(result[key]).toBeCloseTo(box[key]);
+});
+
+it.each([-30, -15, 15, 30])('maps a rotated point back to its original position at %i degrees', angle => {
+  const width = 960, height = 540;
+  const radians = angle * Math.PI / 180;
+  const c = Math.cos(radians), s = Math.sin(radians);
+  const rw = Math.ceil(Math.abs(width * c) + Math.abs(height * s));
+  const rh = Math.ceil(Math.abs(width * s) + Math.abs(height * c));
+  const dx = width * 0.2, dy = height * -0.1;
+  const result = restoreBox({ x: (c * dx - s * dy + rw / 2) / rw, y: (s * dx + c * dy + rh / 2) / rh, w: 0, h: 0 }, width, height, rw, rh, angle);
+  expect(result.x).toBeCloseTo(0.7);
+  expect(result.y).toBeCloseTo(0.4);
+});

@@ -8,9 +8,9 @@ export function normalize(text: string) {
 export function yen(text: string): bigint | undefined {
   const normalized = normalize(text).replace(/^[\\¥]\s*(\d{1,3}(?:[.,]\d{3})+)\s*[。」「』,]*$/u,
     (_, amount: string) => '¥' + amount.replaceAll('.', ','));
-  const match = normalized.match(/^(?:(?:税込|税抜)\s*[:：]?\s*)?(?:(¥)\s*)?((?:\d{1,3}(?:,\d{3})+|\d+))\s*(円)?(?:\s*[(（]?(?:税込|税抜)[)）]?)?$/u);
+  const match = normalized.match(/^(?:(?:税込|税抜)\s*[:：]?\s*)?(?:(¥)\s*)?((?:\d{1,3}(?:[,.]\d{3})+|\d+))\s*(円)?(?:\s*[(（]?(?:税込|税抜)[)）]?)?$/u);
   if (!match || (!match[1] && !match[3])) return;
-  return BigInt(match[2].replaceAll(',', ''));
+  return BigInt(match[2].replace(/[,.]/g, ''));
 }
 
 export function convert(amount: bigint, rate: string, code: string) {
@@ -26,7 +26,7 @@ export function yenReadings(readings: Reading[]): Reading[] {
     const exact = yen(reading.text);
     if (exact !== undefined) return [{ ...reading, text: '¥' + exact.toLocaleString('en-US') }];
     const text = normalize(reading.text);
-    const pattern = /[¥]\s*(?:\d{1,3}(?:[,.]\d{3})+|\d+)(?![\d.,])|\\\s*\d{1,3}(?:[,.]\d{3})+|(?<![\d.,])(?:\d{1,3}(?:,\d{3})+|\d+)\s*円/gu;
+    const pattern = /[¥]\s*(?:\d{1,3}(?:[,.]\d{3})+|\d+)(?![\d.,])|\\\s*\d{1,3}(?:[,.]\d{3})+|(?<![\d.,])(?:\d{1,3}(?:[,.]\d{3})+|\d+)\s*円/gu;
     return [...text.matchAll(pattern)].flatMap(match => {
       const value = yen(match[0]);
       if (value === undefined) return [];

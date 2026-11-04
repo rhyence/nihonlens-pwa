@@ -55,7 +55,26 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
       const canvas = document.createElement('canvas');
       canvas.width = image.width;
       canvas.height = image.height;
-      const paint = () => canvas.getContext('2d')!.drawImage(image, 0, 0);
+      const paint = () => {
+        const ctx = canvas.getContext('2d')!;
+        const difficult = document.documentElement.dataset.testLighting === 'dim-tilted';
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        if (difficult) {
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(Math.PI / 12);
+          ctx.scale(0.75, 0.75);
+          ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        }
+        ctx.drawImage(image, 0, 0);
+        ctx.restore();
+        if (difficult) {
+          ctx.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          document.documentElement.dataset.testFrame = 'dim-tilted';
+        }
+      };
       const stream = canvas.captureStream(8);
       paint();
       const timer = window.setInterval(paint, 100);
@@ -82,6 +101,15 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(page.getByLabel('Frozen camera frame')).toBeHidden();
   await expect(page.locator('.overlay')).toHaveText('₱640.00', { timeout: 25_000 });
+  await page.evaluate(() => { document.documentElement.dataset.testLighting = 'dim-tilted'; });
+  await page.waitForFunction(() => document.documentElement.dataset.testFrame === 'dim-tilted');
+  await page.evaluate(() => new Promise<void>(resolve => {
+    const video = document.querySelector('video')!;
+    video.requestVideoFrameCallback(() => video.requestVideoFrameCallback(() => resolve()));
+  }));
+  await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+  await expect(page.locator('.overlay')).toHaveText('₱640.00', { timeout: 60_000 });
+  await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
   await page.getByRole('button', { name: 'Stop camera' }).click();
   await expect(page.locator('.overlay')).toHaveCount(0);
 });

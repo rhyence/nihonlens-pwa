@@ -1,6 +1,7 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
 import { packCache, packPath } from './pack-info';
 import { normalize, yen, yenReadings, type Reading } from './vision';
+import { enhance } from './image';
 
 function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
   let timer: ReturnType<typeof setTimeout>;
@@ -14,7 +15,7 @@ export class Engines {
   private ocr?: OCR;
   private closed = false;
 
-  async read(canvas: HTMLCanvasElement): Promise<Reading[]> {
+  async read(source: HTMLCanvasElement, attempt = 0): Promise<Reading[]> {
     if (this.closed) throw new Error('OCR stopped.');
     if (!this.ocr) {
       const cached = await (await caches.open(packCache)).match(packPath + 'runtime/worker.min.js');
@@ -39,6 +40,7 @@ export class Engines {
       }
     }
     const worker = this.ocr;
+    const { canvas, map } = enhance(source, attempt);
     const { width, height } = canvas;
     const recognize = async (mode: PSM): Promise<Reading[]> => {
       await worker.setParameters({ tessedit_pageseg_mode: mode });
@@ -51,7 +53,7 @@ export class Engines {
         const y1 = Math.min(height, bbox.y1);
         const normalized = normalize(text);
         if (!normalized || !(x1 > x0 && y1 > y0)) return [];
-        return [{ text: normalized, confidence, box: { x: x0 / width, y: y0 / height, w: (x1 - x0) / width, h: (y1 - y0) / height } }];
+        return [{ text: normalized, confidence, box: map({ x: x0 / width, y: y0 / height, w: (x1 - x0) / width, h: (y1 - y0) / height }) }];
       }).slice(0, 30);
     };
 

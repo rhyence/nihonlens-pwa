@@ -93,4 +93,7 @@ it('requires all versioned pack assets and rejects a truncated entry', async () 
 it('repairs grouped yen OCR readings', () => {
   expect(yen('\\4.400。')).toBe(4400n);
   expect(yen('4.400')).toBeUndefined();
+  expect(yen('税込 1.280円')).toBe(1280n);
+  expect(yen('12.50円')).toBeUndefined();
+  expect(yenReadings([{ text: '価格 1.280円', box: { x: 0, y: 0, w: 1, h: 1 } }])[0].text).toBe('¥1,280');
 });

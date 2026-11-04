@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Engines } from './engines';
+import { scanAngles } from './image';
 import { controlled, downloadPack, removePack, verifyInstalled } from './pack';
 import { packBytes } from './pack-info';
 import { convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track } from './vision';
@@ -19,6 +20,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [frozen, setFrozen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [scanAttempt, setScanAttempt] = useState(0);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -83,6 +85,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     setFrozen(false);
     setScanning(false);
     setScanned(false);
+    setScanAttempt(0);
   }
 
   function toggleFreeze() {
@@ -92,6 +95,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     tracker.current.clear();
     setTracks([]);
     setScanned(false);
+    setScanAttempt(0);
     if (!frozen) {
       const scale = Math.min(1, 960 / Math.max(frame.videoWidth, frame.videoHeight));
       still.current.width = Math.round(frame.videoWidth * scale);
@@ -150,7 +154,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     const context = canvas.getContext('2d')!;
     const frameGate = gate.current;
     let active = true;
-    let highDetail = false;
+    let attempt = 0;
     let timer: ReturnType<typeof setTimeout>;
     const scan = async () => {
       const frame = video.current;
@@ -160,22 +164,23 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         const image = frozen ? still.current! : frame;
         const w = frozen ? still.current!.width : frame.videoWidth;
         const h = frozen ? still.current!.height : frame.videoHeight;
-        const scale = Math.min(1, (frozen || highDetail ? 960 : 640) / Math.max(w, h));
+        const scale = Math.min(1, (frozen || attempt > 0 ? 960 : 640) / Math.max(w, h));
         let completed = false;
         try {
           await frameGate.run(async () => {
             if (active) setScanning(true);
+            setScanAttempt(attempt);
             canvas.width = Math.round(w * scale);
             canvas.height = Math.round(h * scale);
             context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            return yenReadings(await ocr.read(canvas));
+            return yenReadings(await ocr.read(canvas, attempt));
           }, readings => {
-            if (!readings.length) highDetail = !highDetail;
+            completed = readings.length > 0 || attempt === scanAngles.length - 1;
+            if (!readings.length) attempt = (attempt + 1) % scanAngles.length;
             setSource({ w, h });
             setTracks(tracker.current.update(readings, performance.now(), 1));
             setScanning(false);
-            setScanned(true);
-            completed = true;
+            setScanned(completed);
           });
         } catch (failure) {
           stopCamera();
@@ -238,7 +243,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       </button>
       {camera && <button className="primary" onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
     </div>
-    <p className="scan-status" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Resume and move closer to the price.') : 'Scanning frozen photo… You can put your phone down.') : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>
+    <p className="scan-status" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>
     </div>
     <section className="panel converter" aria-label="Manual converter">
       <div className="section-heading"><h2>Quick convert</h2><span>Type a price</span></div>
