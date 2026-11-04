@@ -91,7 +91,9 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await page.getByRole('button', { name: 'Freeze & scan' }).click();
     await expect(page.locator('.overlay').filter({ hasText: 'PHP 512.00' })).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toHaveCount(0);
-    await page.getByLabel('English translation').check();
+    await expect(page.getByText('Text found. English translation is off.')).toBeVisible();
+    await expect(page.locator('.overlay').filter({ hasText: /こ\s*ん\s*に\s*ち\s*は/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Translate this frame' }).click();
     await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 80_000 });
     await page.getByRole('button', { name: 'PHP 512.00' }).click();
     await expect(page.getByText('Original Japanese')).toBeVisible();
@@ -101,7 +103,8 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await page.getByLabel('PHP per JPY').fill('0.50');
     await expect(page.getByRole('button', { name: 'PHP 640.00' })).toBeVisible();
     await page.getByLabel('Yen conversion').uncheck();
-    await expect(page.locator('.overlay')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'PHP 640.00' })).toHaveCount(0);
+    await expect(page.locator('.overlay').filter({ hasText: /こ\s*ん\s*に\s*ち\s*は/ })).toBeVisible();
     await page.evaluate(async () => {
       const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
       const cache = await caches.open(name);

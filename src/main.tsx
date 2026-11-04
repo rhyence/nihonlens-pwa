@@ -109,7 +109,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }, [settings, initialSettings]);
 
   useEffect(() => {
-    if (!ready || !camera || (!translationEnabled && !settings.currency) || (scanOnFreeze && !frozen)) return;
+    if (!ready || !camera || (!frozen && !translationEnabled && !settings.currency) || (scanOnFreeze && !frozen)) return;
     const surface = document.createElement('canvas');
     const context = surface.getContext('2d')!;
     const frameGate = gate.current;
@@ -172,7 +172,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             setSource({ w: width, h: height });
             if (frozen) {
               setTracks(readings.map((reading, id) => ({ ...reading, id, hits: 2, seen: performance.now() })));
-              setScanMessage(readings.length ? '' : 'No text found. Move closer and try again.');
+              setScanMessage(!readings.length ? 'No text found. Resume, move closer, and scan again.' :
+                readings.some(reading => reading.english) ? 'English translation complete.' :
+                !translationEnabled ? 'Text found. English translation is off.' :
+                'Text found. No English translation was produced for this frame.');
             } else setTracks(tracker.current.update(readings, performance.now()));
           });
           if (frozen && processed && document.visibilityState === 'visible') return;
@@ -242,7 +245,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       setTracks([]);
     } else {
       const element = video.current;
-      if (!element?.videoWidth || element.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+      if (!element?.videoWidth || element.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        setScanMessage('The camera is still starting. Wait for the preview, then tap again.');
+        return;
+      }
       const frame = document.createElement('canvas');
       const scale = Math.min(1, 960 / Math.max(element.videoWidth, element.videoHeight));
       frame.width = Math.round(element.videoWidth * scale);
@@ -251,7 +257,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       still.current = frame;
       element.pause();
       setTracks([]);
-      setScanMessage(ready ? '' : 'Wait for the offline pack check before scanning.');
+      setScanMessage(ready ? 'Reading frozen frame…' : busy ? 'Checking the offline pack. The scan will start when it is ready.' :
+        'The offline pack is unavailable. Download or verify it below.');
     }
     setFrozen(!frozen);
   }
@@ -262,7 +269,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       ? [settings.units !== 'USD' && convert(price, settings.php, 'PHP'),
          settings.units !== 'PHP' && convert(price, settings.usd, 'USD')].filter(Boolean).join(' / ')
       : '';
-    return [translationEnabled && track.english, converted].filter(Boolean).join(' · ');
+    return [translationEnabled && track.english, converted].filter(Boolean).join(' · ') || (frozen ? track.text : '');
   }
 
   return <main>
@@ -286,6 +293,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     {camera && scanOnFreeze && !frozen && <p>Tap Freeze &amp; scan to read a still frame.</p>}
     {interrupted && <p role="alert">The last English translation was interrupted. You can still scan yen prices. Enable English translation to try it again.</p>}
     {scanMessage && <p aria-live="polite">{scanMessage}</p>}
+    {scanOnFreeze && frozen && ready && tracks.length > 0 && !translationEnabled &&
+      <button onClick={() => { setMobileTranslation(true); setInterrupted(false); setNotice(''); }}>
+        Translate this frame
+      </button>}
     {selected && <aside><strong>Original Japanese</strong><p lang="ja">{selected.text}</p><button onClick={() => setSelected(undefined)}>Close</button></aside>}
     {notice && <p role="alert">{notice}</p>}
     <section className="panel">
