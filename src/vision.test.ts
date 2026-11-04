@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { convert, fill, FrameGate, Tracker, TranslationCache, yen } from './vision';
+import { convert, fill, FrameGate, menuTranslation, Tracker, TranslationCache, yen } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -71,4 +71,12 @@ it('requires all versioned pack assets and rejects a truncated entry', async () 
   expect(await installed(cache)).toBe(true);
   items.set(packPath + packAssets[0].path, new Response('bad', { headers: { 'content-length': '3' } }));
   expect(await installed(cache)).toBe(false);
+});
+
+it('uses exact dish names and repairs grouped yen OCR readings', () => {
+  expect(menuTranslation('海 鮮 丼')).toBe('Seafood rice bowl');
+  expect(menuTranslation('うに丼')).toBe('Sea urchin rice bowl');
+  expect(menuTranslation('レボ 6 記 王')).toBeUndefined();
+  expect(yen('\\4.400。')).toBe(4400n);
+  expect(yen('4.400')).toBeUndefined();
 });

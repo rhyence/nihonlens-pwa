@@ -1,14 +1,73 @@
 export type Box = { x: number; y: number; w: number; h: number };
-export type Reading = { text: string; box: Box; english?: string };
+export type Reading = { text: string; box: Box; english?: string; confidence?: number };
 export type Track = Reading & { id: number; seen: number; hits: number };
 const japanese = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
+
+const menuTerms = new Map([
+  ['海鮮丼', 'Seafood rice bowl'],
+  ['うに丼', 'Sea urchin rice bowl'],
+  ['ウニ丼', 'Sea urchin rice bowl'],
+  ['鮪づくし', 'Assorted tuna'],
+  ['まぐろづくし', 'Assorted tuna'],
+  ['おまかせ', 'Chef’s selection'],
+]);
+
+export function menuTranslation(text: string) {
+  return menuTerms.get(normalize(text).replace(/\s/g, ''));
+}
+
+export function prepareFocus(source: HTMLCanvasElement, box: Box, target: HTMLCanvasElement) {
+  const cropHeight = box.h * source.height;
+  const scale = Math.min(Math.max(1, Math.min(2, 60 / cropHeight)), 960 / Math.max(box.w * source.width, cropHeight));
+  const padding = 16;
+  const width = Math.max(1, Math.round(box.w * source.width * scale));
+  const height = Math.max(1, Math.round(box.h * source.height * scale));
+  target.width = width + padding * 2;
+  target.height = height + padding * 2;
+  const ctx = target.getContext('2d', { willReadFrequently: true })!;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, target.width, target.height);
+  ctx.drawImage(source, box.x * source.width, box.y * source.height, box.w * source.width, box.h * source.height,
+    padding, padding, width, height);
+  const image = ctx.getImageData(padding, padding, width, height);
+  const histogram = new Uint32Array(256);
+  const pixels = image.data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = Math.round(0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]);
+    pixels[i] = gray;
+    histogram[gray]++;
+  }
+  const cutoff = width * height * 0.01;
+  let low = 0;
+  let high = 255;
+  for (let sum = histogram[low]; sum < cutoff && low < 255;) sum += histogram[++low];
+  for (let sum = histogram[high]; sum < cutoff && high > 0;) sum += histogram[--high];
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = high > low ? (pixels[i] - low) * 255 / (high - low) : pixels[i];
+    pixels[i] = pixels[i + 1] = pixels[i + 2] = gray;
+  }
+  ctx.putImageData(image, padding, padding);
+  return (reading: Reading): Reading => {
+    const { x, y, w, h } = reading.box;
+    const left = Math.max(0, (x * target.width - padding) / width);
+    const top = Math.max(0, (y * target.height - padding) / height);
+    const right = Math.min(1, ((x + w) * target.width - padding) / width);
+    const bottom = Math.min(1, ((y + h) * target.height - padding) / height);
+    return { ...reading, box: {
+      x: box.x + left * box.w, y: box.y + top * box.h,
+      w: (right - left) * box.w, h: (bottom - top) * box.h,
+    } };
+  };
+}
 
 export function normalize(text: string) {
   return text.normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
 
 export function yen(text: string): bigint | undefined {
-  const match = normalize(text).match(/^(?:(?:税込|税抜)\s*[:：]?\s*)?(?:(¥)\s*)?((?:\d{1,3}(?:,\d{3})+|\d+))\s*(円)?(?:\s*[(（]?(?:税込|税抜)[)）]?)?$/u);
+  const normalized = normalize(text).replace(/^[\\¥]\s*(\d{1,3}(?:[.,]\d{3})+)\s*[。」「』,]*$/u,
+    (_, amount: string) => '¥' + amount.replaceAll('.', ','));
+  const match = normalized.match(/^(?:(?:税込|税抜)\s*[:：]?\s*)?(?:(¥)\s*)?((?:\d{1,3}(?:,\d{3})+|\d+))\s*(円)?(?:\s*[(（]?(?:税込|税抜)[)）]?)?$/u);
   if (!match || (!match[1] && !match[3])) return;
   return BigInt(match[2].replaceAll(',', ''));
 }

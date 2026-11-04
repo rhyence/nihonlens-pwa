@@ -112,6 +112,21 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await page.getByLabel('Yen conversion').uncheck();
     await expect(page.getByRole('button', { name: 'PHP 640.00' })).toHaveCount(0);
     await expect(page.locator('.overlay').filter({ hasText: /こ\s*ん\s*に\s*ち\s*は/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Select text area' }).click();
+    const cameraPreview = page.getByRole('region', { name: 'Camera preview' });
+    await cameraPreview.scrollIntoViewIfNeeded();
+    const preview = (await cameraPreview.boundingBox())!;
+    const scale = Math.min(preview.width / 960, preview.height / 600);
+    const left = preview.x + (preview.width - 960 * scale) / 2;
+    const top = preview.y + (preview.height - 600 * scale) / 2;
+    await page.mouse.move(left + 205 * scale, top + 115 * scale);
+    await page.mouse.down();
+    await page.mouse.move(left + 720 * scale, top + 255 * scale, { steps: 4 });
+    await page.mouse.up();
+    const focused = page.getByRole('region', { name: 'Scan results' });
+    await expect(focused).toContainText(/こ\s*ん\s*に\s*ち\s*は/, { timeout: 20_000 });
+    await expect(focused).not.toContainText('1,280');
+    await expect(page.locator('.focus-box')).toBeVisible();
     await page.evaluate(async () => {
       const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
       const cache = await caches.open(name);

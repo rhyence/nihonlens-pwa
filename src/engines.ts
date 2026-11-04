@@ -20,7 +20,7 @@ export class Engines {
 
   constructor(private readonly lowMemory = false) {}
 
-  async read(canvas: HTMLCanvasElement, vertical: boolean, thorough = false): Promise<Reading[]> {
+  async read(canvas: HTMLCanvasElement, vertical: boolean, thorough = false, focused = false): Promise<Reading[]> {
     if (this.closed) throw new Error('OCR stopped.');
     if (!this.ocr || this.vertical !== vertical) {
       await this.ocr?.terminate();
@@ -57,25 +57,25 @@ export class Engines {
       await worker.setParameters({ tessedit_pageseg_mode: mode });
       const { data } = await deadline(worker.recognize(canvas, {}, { blocks: true }), 'Japanese OCR timed out.');
       const lines = (data.blocks ?? []).flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines));
-      return lines.flatMap(({ text, bbox }) => {
+      return lines.flatMap(({ text, bbox, confidence }) => {
         const x0 = Math.max(0, bbox.x0);
         const y0 = Math.max(0, bbox.y0);
         const x1 = Math.min(width, bbox.x1);
         const y1 = Math.min(height, bbox.y1);
         const normalized = normalize(text);
         if (!normalized || !(x1 > x0 && y1 > y0)) return [];
-        return [{ text: normalized, box: { x: x0 / width, y: y0 / height, w: (x1 - x0) / width, h: (y1 - y0) / height } }];
+        return [{ text: normalized, confidence, box: { x: x0 / width, y: y0 / height, w: (x1 - x0) / width, h: (y1 - y0) / height } }];
       }).slice(0, 30);
     };
 
-    const first = await recognize(vertical ? PSM.SINGLE_BLOCK_VERT_TEXT : PSM.SPARSE_TEXT);
+    const first = await recognize(vertical ? PSM.SINGLE_BLOCK_VERT_TEXT : focused ? PSM.SINGLE_LINE : PSM.SPARSE_TEXT);
     if (vertical || !thorough) return first;
     const useful = (readings: Reading[]) => readings.some(({ text }) =>
       yen(text) !== undefined || /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]{2}/u.test(text.replace(/\s/g, '')));
     if (useful(first)) return first;
 
     // Sparse recognition can miss dense horizontal menus or tightly framed text.
-    for (const mode of [PSM.AUTO, PSM.SINGLE_BLOCK]) {
+    for (const mode of focused ? [PSM.SPARSE_TEXT, PSM.SINGLE_BLOCK] : [PSM.AUTO, PSM.SINGLE_BLOCK]) {
       if (this.closed) return [];
       const retry = await recognize(mode);
       if (useful(retry)) return retry;

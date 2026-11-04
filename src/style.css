@@ -23,3 +23,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .settings label{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
 input:not([type=checkbox]){max-width:100%}
 small{color:#bdd2d8}
+
+.view.selecting{touch-action:none;cursor:crosshair}
+.focus-box{position:absolute;border:2px solid #86e3ce;pointer-events:none;z-index:1}

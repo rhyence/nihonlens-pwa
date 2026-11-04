@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Engines } from './engines';
 import { controlled, downloadPack, removePack, verifyInstalled } from './pack';
 import { packBytes, packVersion } from './pack-info';
-import { convert, fill, FrameGate, Tracker, TranslationCache, yen, type Track } from './vision';
+import { convert, fill, FrameGate, menuTranslation, prepareFocus, Tracker, TranslationCache, yen, type Box, type Track } from './vision';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import './style.css';
 
@@ -35,6 +35,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [starting, setStarting] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const [scanMessage, setScanMessage] = useState('');
+  const [focus, setFocus] = useState<Box>();
+  const [selection, setSelection] = useState<Box>();
+  const [selecting, setSelecting] = useState(false);
+  const dragStart = useRef<{ x: number; y: number } | undefined>(undefined);
   const still = useRef<HTMLCanvasElement | undefined>(undefined);
   const frozenPreview = useRef<HTMLCanvasElement>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -132,7 +136,9 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             surface.width = Math.round(width * scale);
             surface.height = Math.round(height * scale);
             if (!snapshot) context.drawImage(element!, 0, 0, surface.width, surface.height);
-            const readings = await engine.read(snapshot ?? surface, settings.vertical, frozen);
+            const remap = snapshot && focus ? prepareFocus(snapshot, focus, surface) : undefined;
+            let readings = await engine.read(remap ? surface : snapshot ?? surface, settings.vertical, frozen, Boolean(remap));
+            if (remap) readings = readings.map(remap).filter(reading => reading.box.w > 0 && reading.box.h > 0);
             if (scanOnFreeze) await engine.releaseOcr();
             if (frozen && running && document.visibilityState === 'visible') {
               setSource({ w: width, h: height });
@@ -140,13 +146,19 @@ function App({ initialSettings }: { initialSettings: Settings }) {
               if (translationEnabled && readings.length) setScanMessage('Translating frozen frame…');
             }
             let translationFailed = false;
+            let modelTranslated = false;
             if (translationEnabled && running && document.visibilityState === 'visible') {
               try {
                 for (const reading of readings.slice(0, 4)) {
                   if (!running || document.visibilityState !== 'visible') break;
-                  reading.english = await translations.current.get(reading.text, text => {
+                  const term = menuTranslation(reading.text);
+                  if (term) { reading.english = term; continue; }
+                  if (reading.confidence !== undefined && reading.confidence < 55) continue;
+                  reading.english = await translations.current.get(reading.text, async text => {
                     if (scanOnFreeze) recordTranslation(true);
-                    return engine.translate(text);
+                    const english = await engine.translate(text);
+                    modelTranslated ||= Boolean(english);
+                    return english;
                   });
                 }
               } catch (error) {
@@ -162,7 +174,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             if (scanOnFreeze && running && document.visibilityState === 'visible') {
               if (translationFailed) {
                 setNotice('English translation stopped. Yen conversion is still available.');
-              } else if (readings.some(reading => reading.english)) {
+              } else if (modelTranslated) {
                 setStatus('Offline Ready');
                 setInterrupted(false);
               }
@@ -176,7 +188,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
               setScanMessage(!readings.length ? 'No text found. Resume, move closer, and scan again.' :
                 readings.some(reading => reading.english) ? 'English translation complete.' :
                 !translationEnabled ? 'Text found. English translation is off.' :
-                'Text found. No English translation was produced for this frame.');
+                'Text found. If the reading looks wrong, select just the line you want to scan.');
             } else setTracks(tracker.current.update(readings, performance.now()));
           });
           if (frozen && processed && document.visibilityState === 'visible') return;
@@ -201,12 +213,16 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [ready, camera, frozen, translationEnabled, settings.currency, settings.vertical]);
+  }, [ready, camera, frozen, focus, translationEnabled, settings.currency, settings.vertical]);
 
   function stopCamera() {
     gate.current.invalidate();
     still.current = undefined;
     setScanMessage('');
+    setFocus(undefined);
+    setSelection(undefined);
+    setSelecting(false);
+    dragStart.current = undefined;
     stream.current?.getTracks().forEach(track => track.stop());
     stream.current = undefined;
     if (video.current) video.current.srcObject = null;
@@ -242,6 +258,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       setSelected(undefined);
       still.current = undefined;
       setScanMessage('');
+      setFocus(undefined);
+      setSelection(undefined);
+      setSelecting(false);
+      dragStart.current = undefined;
       tracker.current.clear();
       setTracks([]);
     } else {
@@ -251,7 +271,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         return;
       }
       const frame = frozenPreview.current!;
-      const scale = Math.min(1, 960 / Math.max(element.videoWidth, element.videoHeight));
+      const scale = Math.min(1, 1440 / Math.max(element.videoWidth, element.videoHeight));
       frame.width = Math.round(element.videoWidth * scale);
       frame.height = Math.round(element.videoHeight * scale);
       frame.getContext('2d')!.drawImage(element, 0, 0, frame.width, frame.height);
@@ -262,6 +282,38 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         'The offline pack is unavailable. Download or verify it below.');
     }
     setFrozen(!frozen);
+  }
+
+  function focusPoint(event: PointerEvent<HTMLElement>) {
+    const frame = still.current;
+    if (!frame) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const displayed = fill({ x: 0, y: 0, w: 1, h: 1 }, frame.width, frame.height, rect.width, rect.height, 'contain');
+    const clamp = (value: number) => Math.max(0, Math.min(1, value));
+    return {
+      x: clamp((event.clientX - rect.left - displayed.x) / displayed.w),
+      y: clamp((event.clientY - rect.top - displayed.y) / displayed.h),
+    };
+  }
+
+  function pickArea(event: PointerEvent<HTMLElement>, finish: boolean) {
+    const from = dragStart.current;
+    const to = focusPoint(event);
+    if (!from || !to) return;
+    const box = { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), w: Math.abs(from.x - to.x), h: Math.abs(from.y - to.y) };
+    if (!finish) { setSelection(box); return; }
+    dragStart.current = undefined;
+    setSelection(undefined);
+    if (box.w < 0.025 || box.h < 0.025) {
+      setScanMessage('Drag a box around a dish name or price.');
+      return;
+    }
+    gate.current.invalidate();
+    setSelecting(false);
+    setSelected(undefined);
+    setTracks([]);
+    setScanMessage('Reading selected area…');
+    setFocus(box);
   }
 
   function label(track: Track) {
@@ -275,11 +327,19 @@ function App({ initialSettings }: { initialSettings: Settings }) {
 
   return <main>
     <header><p className="eyebrow">ON-DEVICE JAPANESE CAMERA</p><h1>NihonLens</h1><p>Translate signs and convert yen prices as you look.</p></header>
-    <section className="view" ref={preview} aria-label="Camera preview">
+    <section className={selecting ? 'view selecting' : 'view'} ref={preview} aria-label="Camera preview"
+      onPointerDown={event => {
+        if (!selecting || !event.isPrimary) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragStart.current = focusPoint(event);
+      }}
+      onPointerMove={event => { if (selecting && event.isPrimary) pickArea(event, false); }}
+      onPointerUp={event => { if (selecting && event.isPrimary) pickArea(event, true); }}
+      onPointerCancel={() => { dragStart.current = undefined; setSelection(undefined); }}>
       <video ref={video} muted playsInline hidden={frozen} />
       <canvas ref={frozenPreview} className="frozen-preview" hidden={!frozen} aria-label="Frozen camera frame" />
       {!camera && <p className="hint">Start the camera to scan Japanese text.</p>}
-      {source.w > 0 && size.w > 0 && tracks.map(track => {
+      {!selecting && source.w > 0 && size.w > 0 && tracks.map(track => {
         const value = label(track);
         const box = fill(track.box, source.w, source.h, size.w, size.h, frozen ? 'contain' : 'cover');
         if (!value || box.x + box.w < 0 || box.y + box.h < 0 || box.x > size.w || box.y > size.h) return null;
@@ -290,10 +350,28 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         return <button className="overlay" key={track.id} style={{ left, top, width: labelWidth }}
           onClick={() => setSelected(track)}>{value}</button>;
       })}
+      {(selection ?? focus) && still.current && size.w > 0 && <div className="focus-box" aria-hidden="true"
+        style={(() => {
+          const box = fill((selection ?? focus)!, still.current.width, still.current.height, size.w, size.h, 'contain');
+          return { left: box.x, top: box.y, width: box.w, height: box.h };
+        })()} />}
     </section>
     <div className="row">
       <button disabled={starting} onClick={camera ? stopCamera : () => void startCamera()}>{camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}</button>
       <button disabled={!camera} onClick={() => void toggleFreeze()}>{frozen ? 'Resume' : scanOnFreeze ? 'Freeze & scan' : 'Freeze'}</button>
+      {frozen && ready && <button onClick={() => {
+        setSelecting(!selecting);
+        setSelection(undefined);
+        dragStart.current = undefined;
+        if (!selecting) setScanMessage('Drag a box around a dish name or price.');
+      }}>{selecting ? 'Cancel selection' : 'Select text area'}</button>}
+      {frozen && focus && !selecting && <button onClick={() => {
+        gate.current.invalidate();
+        setFocus(undefined);
+        setSelected(undefined);
+        setTracks([]);
+        setScanMessage('Reading full frame…');
+      }}>Scan full frame</button>}
     </div>
     {camera && scanOnFreeze && !frozen && <p>Tap Freeze &amp; scan to read a still frame.</p>}
     {interrupted && <p role="alert">The last English translation was interrupted. You can still scan yen prices. Enable English translation to try it again.</p>}
@@ -306,6 +384,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <h2>Scan results</h2>
       <ul>{tracks.map(track => <li key={track.id}>
         <span lang="ja">{track.text}</span>
+        {track.confidence !== undefined && track.confidence < 55 && !track.english && <small> · Check reading</small>}
         {label(track) !== track.text && <div>{label(track)}</div>}
       </li>)}</ul>
     </section>}
