@@ -10,6 +10,7 @@ import './style.css';
 function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
   const [pesos, setPesos] = useState('');
+  const [yenAmount, setYenAmount] = useState('');
   const [status, setStatus] = useState('Checking offline scanner…');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -202,6 +203,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const rate = settings.php;
   const validRate = /^\d{0,8}(?:\.\d{1,10})?$/.test(rate) && Number(rate) > 0;
   const manual = pesosToYen(pesos, rate);
+  const manualPesos = validRate && /^\d{1,12}$/.test(yenAmount)
+    ? convert(BigInt(yenAmount), rate, 'PHP')?.replace('PHP ', '₱') : undefined;
   function display(track: Track) {
     const amount = yen(track.text);
     return amount === undefined || !validRate ? undefined : convert(amount, rate, 'PHP')?.replace('PHP ', '₱');
@@ -229,6 +232,15 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       </button>
       {camera && <button onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
     </div>
+    <section className="panel settings" aria-label="Manual converter">
+      <h2>Type a price to convert</h2>
+      <label>Amount in JPY <input inputMode="numeric" maxLength={12} value={yenAmount} onChange={event => setYenAmount(event.target.value)} placeholder="e.g. 1280" /></label>
+      {manualPesos && <output aria-label="Amount in pesos" aria-live="polite">{manualPesos}</output>}
+      {yenAmount && !/^\d{1,12}$/.test(yenAmount) && <small>Enter a whole yen amount using digits only.</small>}
+      <label>Amount in PHP <input inputMode="decimal" value={pesos} onChange={event => setPesos(event.target.value)} placeholder="0.00" /></label>
+      {manual && <output aria-label="Amount in yen" aria-live="polite">{manual}</output>}
+      <small>Converts instantly using your exchange rate below.</small>
+    </section>
     {camera && <p aria-live="polite">{frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Resume and move closer to the price.') : 'Scanning frozen photo… You can put your phone down.') : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.'}</p>}
     {tracks.length > 0 && <section className="panel" aria-label="Detected prices">
       <h2>Detected prices</h2>
@@ -239,9 +251,6 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <h2>Exchange rate</h2>
       <label>PHP per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings({ php: event.target.value })} /></label>
       <small>{validRate ? 'This is a manual rate. Edit it whenever you need to.' : 'Enter a positive PHP amount for ¥1.'}</small>
-      <h2>Pesos to yen</h2>
-      <label>Amount in PHP <input inputMode="decimal" value={pesos} onChange={event => setPesos(event.target.value)} placeholder="0.00" /></label>
-      {manual && <output aria-label="Amount in yen">{manual}</output>}
     </section>
     <section className="panel">
       <h2>Offline scanner</h2>
