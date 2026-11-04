@@ -8,6 +8,10 @@ The PHP/USD switch applies to both camera prices and manual conversion in either
 
 When the normal scan finds no price, the scanner retries with grayscale contrast enhancement and rotations of ±15° and ±30°. Each live cycle does one recognition pass; frozen scans stop on a result or after six attempts. Resume or Stop discards pending results. Rotated boxes are mapped back to the camera coordinates. These fallbacks can take longer and cannot recover unreadable blur, clipped glare, or strong perspective distortion. The browser test includes a dimmed, 15°-tilted price fixture; outdoor iPhone performance still requires device testing.
 
+## Shopping list and budget
+
+Tap a camera price overlay to add one item, or use Quick converter / Add item for manual entry. Open the bottom shopping bar to rename items, edit unit prices in yen, change quantities, remove entries, and undo the last removal. Separate PHP and USD budgets deduct the current converted list total and restore the balance when items are removed. A negative balance is shown as over budget. Original yen prices, quantities, and budgets are saved locally for offline reload; currency selection still starts on PHP. Conversion rates apply to the whole list, so changing a rate updates the total and balance. Invalid item edits hide the total until corrected. The hamburger menu contains appearance, exchange-rate, offline-scanner, and translator controls. No payments are made.
+
 ## Run locally
 
 ```sh

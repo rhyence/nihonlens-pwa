@@ -16,13 +16,18 @@ test('converts a manual peso amount and saves the rate offline', async ({ page, 
   expect(manifest.ok()).toBe(true);
   expect((await manifest.json()).display).toBe('standalone');
   await expect(page.getByLabel('PHP per JPY')).toHaveValue('0.40');
+  await page.getByRole('button', { name: 'Quick converter', exact: true }).click();
   await page.getByLabel('Amount in JPY').fill('1280');
   await expect(page.getByLabel('Amount in pesos')).toHaveText('₱512.00');
   await page.getByRole('button', { name: 'Pesos → Yen', exact: true }).click();
   await page.getByLabel('Amount in PHP').fill('1760');
   await expect(page.getByLabel('Amount in yen')).toHaveText('¥4,400');
+  await page.getByRole('button', { name: 'Close converter' }).click();
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
+  await page.getByRole('button', { name: 'Close menu' }).click();
+  await page.getByRole('button', { name: 'Quick converter', exact: true }).click();
   await expect(page.getByLabel('Amount in yen')).toHaveText('¥3,520');
   await context.setOffline(true);
   await page.reload();
@@ -37,6 +42,7 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
       route.fulfill({ path: join(fixture, 'jpn.traineddata'), headers: { 'access-control-allow-origin': '*' } }));
   }
   await page.goto('/');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   await page.getByRole('button', { name: 'Download scanner' }).click();
   await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
   await page.evaluate(async () => {
@@ -94,13 +100,28 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   await expect(page.getByLabel('Frozen camera frame')).toBeVisible();
   await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
   await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Detected prices' })).toContainText('¥1,280 → ₱512.00');
+  await page.locator('.overlay').click();
+  await page.getByRole('button', { name: 'Open shopping list' }).click();
+  await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱512.00');
+  await page.getByLabel('Budget in PHP', { exact: true }).fill('1000');
+  await expect(page.getByText('Remaining: ₱488.00', { exact: true })).toBeVisible();
+  await page.getByLabel('Item 1 quantity', { exact: true }).fill('2');
+  await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱1,024.00');
+  await expect(page.getByText('Over budget: ₱24.00', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Remove item 1', exact: true }).click();
+  await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱0.00');
+  await expect(page.getByText('Remaining: ₱1,000.00', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo removal of Item 1' }).click();
+  await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱1,024.00');
+  await page.getByRole('button', { name: 'Close shopping list' }).click();
   await page.getByRole('button', { name: 'US$ USD', exact: true }).click();
   await expect(page.locator('.overlay')).toHaveText('US$8.07');
   await page.getByRole('button', { name: '₱ PHP', exact: true }).click();
   await expect(page.locator('.overlay')).toHaveText('₱512.00');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
+  await page.getByRole('button', { name: 'Close menu' }).click();
   await expect(page.locator('.overlay')).toHaveText('₱640.00');
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(page.getByLabel('Frozen camera frame')).toBeHidden();
@@ -126,6 +147,7 @@ test('retries transient failures and rejects incomplete scanner files', async ({
     headers: { 'access-control-allow-origin': '*' },
   }));
   await page.goto('/');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   await page.getByRole('button', { name: 'Download scanner' }).click();
   await expect(page.locator('.pack-status')).toHaveText(/Scanner unavailable/);
   expect(attempts).toBe(2);

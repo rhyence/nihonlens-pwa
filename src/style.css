@@ -112,3 +112,33 @@ footer{text-align:center;font-size:11px;color:#7b887a;padding:14px 0}
 :root:not([data-theme=light]) .currency-picker button{background:transparent}
 :root:not([data-theme=light]) .currency-picker button[aria-pressed=true]{background:#c4ef9b;color:#173b25}
 .settings a{color:inherit;text-decoration:underline}
+main{padding-bottom:110px}
+.menu-toggle{font-size:24px;min-width:48px;padding:4px 10px}
+.scan-shortcuts{display:flex;gap:10px}.scan-shortcuts button{flex:1;font-size:13px}
+.cart-notice{font-size:12px;color:#657864;margin:10px 0;min-height:20px}
+:root:not([data-theme=light]) .cart-notice{color:#b3c8a9}
+.overlay.price{pointer-events:auto;cursor:pointer;min-height:44px;touch-action:manipulation}
+:root:not([data-theme=light]) button.overlay.price{background:#c4ef9bf5;color:#132f20;border-color:#e0ffc1}
+.sheet{inset:0;margin:auto;width:min(100% - 24px,560px);max-height:88dvh;padding:20px;border:1px solid #d5ddcf;border-radius:24px;overflow-y:auto;overscroll-behavior:contain;background:#f4f6f2;color:#182c2b}
+.sheet::backdrop{background:#06120cae}
+.sheet-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.sheet-heading h2{font-size:22px}.sheet-heading>button{font-size:26px;min-width:44px;padding:0;border:0;background:transparent}
+.sheet .converter{padding:0;background:transparent;border:0;margin:0}.sheet .converter>.section-heading{display:none}.sheet .converter>.primary{width:100%;margin-top:14px}
+.menu-links{display:grid;gap:10px;margin-bottom:20px}.menu-links button{text-align:left}.theme-setting{display:flex;align-items:center;justify-content:space-between;font-size:14px;margin:12px 0}
+.cart-dock{position:fixed;z-index:5;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(calc(100% - 24px),704px);display:flex;align-items:center;justify-content:space-between;gap:14px;text-align:left;padding:14px 18px;box-shadow:0 6px 30px #0003;background:#203f35;color:#eef9e6;border:1px solid #5d795c;border-radius:18px;font-size:13px}
+.cart-dock small{display:block;font-size:10px;color:#c5d6bb;margin-top:3px}.cart-dock strong{font-size:18px;color:#c4ef9b;overflow-wrap:anywhere;text-align:right}.cart-dock>span{min-width:0}
+.budget-card{padding:18px;background:#e7f0e1;border-radius:16px;margin-bottom:20px}.cart-total{display:grid;gap:5px;margin-bottom:18px}.cart-total>span{font-size:12px}.cart-total strong{font-size:30px;letter-spacing:-.8px;overflow-wrap:anywhere}
+.budget-card label,.cart-item label{display:grid;gap:5px;font-size:12px}.budget-card input,.cart-item input{min-width:0;width:100%;padding:10px 12px;border:1px solid #c9d7c2;border-radius:10px;background:#fff;color:#213d2c;font-size:16px}
+.budget-card>small{display:block;margin-top:10px}.budget-remaining{color:#275d2d;font-weight:700;margin:12px 0}.over-budget{color:#a23928;font-weight:700;margin:12px 0}
+.cart-item{padding:16px;border:1px solid #d5dfcf;border-radius:16px;background:#fff;margin-bottom:12px}.item-fields{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin:12px 0}.item-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.item-actions strong{overflow-wrap:anywhere}.item-actions button{font-size:12px;min-height:44px}.undo-remove{width:100%;margin:4px 0 16px;font-size:12px;overflow-wrap:anywhere}.empty-cart{padding:24px 0;font-size:14px;color:#647767}.cart-items+small{display:block;margin-top:16px}
+:root:not([data-theme=light]) .sheet{background:#14231b;border-color:#3b5042;color:#e4ede4}
+:root:not([data-theme=light]) .sheet-heading>button{background:transparent}
+:root:not([data-theme=light]) .budget-card{background:#263e29}
+:root:not([data-theme=light]) .cart-item{background:#192b20;border-color:#3a5039}
+:root:not([data-theme=light]) :is(.budget-card input,.cart-item input){background:#101c16;border-color:#496342;color:#e4ede4}
+:root:not([data-theme=light]) .budget-remaining{color:#c4ef9b}
+:root:not([data-theme=light]) .over-budget{color:#ffb5a6}
+:root:not([data-theme=light]) .empty-cart{color:#acc0a5}
+@media(max-width:600px){.sheet{margin:auto auto 0;width:100%;max-height:88dvh;border-radius:24px 24px 0 0;padding-bottom:max(24px,env(safe-area-inset-bottom))}}
+.view{height:clamp(260px,calc(100svh - 480px),620px)}
+.sheet-heading{position:sticky;top:0;z-index:2;background:inherit;padding:8px 0}
+@media(min-width:700px){.view{height:620px}}
