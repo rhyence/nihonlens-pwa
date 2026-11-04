@@ -11,6 +11,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
   const [pesos, setPesos] = useState('');
   const [yenAmount, setYenAmount] = useState('');
+  const [direction, setDirection] = useState<'JPY' | 'PHP'>('JPY');
   const [status, setStatus] = useState('Checking offline scanner…');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -211,11 +212,14 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }
 
   return <main>
-    <header><p className="eyebrow">OFFLINE YEN PRICE SCANNER</p><h1>NihonLens</h1><p>Hold your camera over a yen price to see it in Philippine pesos.</p></header>
+    <header className="app-header"><div className="brand"><span className="brand-mark" aria-hidden="true">¥</span><div><h1>NihonLens</h1><p>Your pocket price companion</p></div></div><span className="country-pair">JP <span aria-hidden="true">↔</span> PH</span></header>
+    <div className="section-heading"><h2>Point. Scan. Convert.</h2><span>Yen to pesos</span></div>
+    <div className="camera-card">
     <section className="view" ref={preview} aria-label="Camera preview">
       <video ref={video} muted playsInline />
       <canvas ref={still} className="frozen-preview" style={{ display: frozen ? 'block' : 'none', objectFit: 'cover' }} aria-label="Frozen camera frame" />
-      {!camera && <p className="hint">Start the camera and point it at a price such as ¥500 or 500円.</p>}
+      <div className="camera-badge"><span className={camera && !frozen ? 'live-dot' : ''} />{frozen ? 'FROZEN FRAME' : camera ? 'LIVE CAMERA' : 'PRICE SCANNER'}</div>
+      {!camera && <div className="hint"><div className="viewfinder" aria-hidden="true">¥</div><h3>A little clarity on every price.</h3><p>Point at ¥500 or 500円.<br />See what it costs in pesos.</p><span className="privacy-note">Private · On your device</span></div>}
       {camera && view.w > 8 && source.w > 0 && tracks.map(track => {
         const price = display(track);
         const box = fill(track.box, source.w, source.h, view.w, view.h);
@@ -226,35 +230,39 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         return <span className="overlay price" key={track.id} style={{ width, left, top }}>{price}</span>;
       })}
     </section>
-    <div className="row">
-      <button disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
+    <div className="camera-controls">
+      <button className={camera ? 'secondary' : 'primary'} disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
         {camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}
       </button>
-      {camera && <button onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
+      {camera && <button className="primary" onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
     </div>
-    <section className="panel settings" aria-label="Manual converter">
-      <h2>Type a price to convert</h2>
-      <label>Amount in JPY <input inputMode="numeric" maxLength={12} value={yenAmount} onChange={event => setYenAmount(event.target.value)} placeholder="e.g. 1280" /></label>
-      {manualPesos && <output aria-label="Amount in pesos" aria-live="polite">{manualPesos}</output>}
+    <p className="scan-status" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Resume and move closer to the price.') : 'Scanning frozen photo… You can put your phone down.') : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>
+    </div>
+    <section className="panel converter" aria-label="Manual converter">
+      <div className="section-heading"><h2>Quick convert</h2><span>Type a price</span></div>
+      <div className="direction-switch" aria-label="Conversion direction"><button aria-pressed={direction === 'JPY'} onClick={() => setDirection('JPY')}>Yen → Pesos</button><button aria-pressed={direction === 'PHP'} onClick={() => setDirection('PHP')}>Pesos → Yen</button></div>
+      {direction === 'JPY' ? <><label className="amount-label">Amount in JPY <span className="amount-field"><span aria-hidden="true">¥</span><input inputMode="numeric" maxLength={12} value={yenAmount} onChange={event => setYenAmount(event.target.value)} placeholder="0" /></span></label>
       {yenAmount && !/^\d{1,12}$/.test(yenAmount) && <small>Enter a whole yen amount using digits only.</small>}
-      <label>Amount in PHP <input inputMode="decimal" value={pesos} onChange={event => setPesos(event.target.value)} placeholder="0.00" /></label>
-      {manual && <output aria-label="Amount in yen" aria-live="polite">{manual}</output>}
-      <small>Converts instantly using your exchange rate below.</small>
+      <div className="conversion-result"><span>In Philippine pesos</span><output aria-label="Amount in pesos" aria-live="polite">{manualPesos ?? '₱—'}</output></div></> : <><label className="amount-label">Amount in PHP <span className="amount-field"><span aria-hidden="true">₱</span><input inputMode="decimal" maxLength={15} value={pesos} onChange={event => setPesos(event.target.value)} placeholder="0.00" /></span></label>
+      <div className="conversion-result"><span>In Japanese yen</span><output aria-label="Amount in yen" aria-live="polite">{manual ?? '¥—'}</output></div></>}
+      <small className="rate-note">{validRate ? `¥1 = ₱${rate} · Your saved rate` : 'Set a positive exchange rate below to convert.'}</small>
     </section>
-    {camera && <p aria-live="polite">{frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Resume and move closer to the price.') : 'Scanning frozen photo… You can put your phone down.') : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.'}</p>}
     {tracks.length > 0 && <section className="panel" aria-label="Detected prices">
       <h2>Detected prices</h2>
       <ul>{tracks.map(track => <li key={track.id}>{track.text}{display(track) && <> → {display(track)}</>}</li>)}</ul>
     </section>}
     {error && <p role="alert">{error}</p>}
-    <section className="panel settings">
-      <h2>Exchange rate</h2>
+    <details className="panel disclosure">
+      <summary>Exchange rate <span>{validRate ? `¥1 = ₱${rate}` : 'Needs attention'}</span></summary>
+      <div className="settings">
       <label>PHP per JPY <input inputMode="decimal" value={rate} onChange={event => setSettings({ php: event.target.value })} /></label>
       <small>{validRate ? 'This is a manual rate. Edit it whenever you need to.' : 'Enter a positive PHP amount for ¥1.'}</small>
-    </section>
-    <section className="panel">
-      <h2>Offline scanner</h2>
-      <p role="status">{status}</p>
+      </div>
+    </details>
+    <details className="panel disclosure" open={!ready}>
+      <summary>Offline scanner <span>{ready ? 'Ready' : busy ? 'Preparing' : 'Set up'}</span></summary>
+      <div className="settings">
+      <p className="pack-status" role="status">{status}</p>
       <small>About {Math.ceil(packBytes / 1e6)} MB. Camera frames stay on your device.</small>
       <div className="row">
         {!ready && <button disabled={busy} onClick={() => void prepare(true)}>Download scanner</button>}
@@ -274,7 +282,9 @@ function App({ initialSettings }: { initialSettings: Settings }) {
           }
         }}>Delete scanner</button>}
       </div>
-    </section>
+      </div>
+    </details>
+    <footer>Made for the moments between yen and pesos.</footer>
   </main>;
 }
 

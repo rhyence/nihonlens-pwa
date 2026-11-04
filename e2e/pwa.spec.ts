@@ -16,8 +16,12 @@ test('converts a manual peso amount and saves the rate offline', async ({ page, 
   expect(manifest.ok()).toBe(true);
   expect((await manifest.json()).display).toBe('standalone');
   await expect(page.getByLabel('PHP per JPY')).toHaveValue('0.40');
+  await page.getByLabel('Amount in JPY').fill('1280');
+  await expect(page.getByLabel('Amount in pesos')).toHaveText('₱512.00');
+  await page.getByRole('button', { name: 'Pesos → Yen', exact: true }).click();
   await page.getByLabel('Amount in PHP').fill('1760');
   await expect(page.getByLabel('Amount in yen')).toHaveText('¥4,400');
+  await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
   await expect(page.getByLabel('Amount in yen')).toHaveText('¥3,520');
   await context.setOffline(true);
@@ -34,7 +38,7 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   }
   await page.goto('/');
   await page.getByRole('button', { name: 'Download scanner' }).click();
-  await expect(page.getByRole('status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
+  await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
   await page.evaluate(async () => {
     const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
     const cache = await caches.open(name);
@@ -60,7 +64,7 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
     };
   });
   await page.reload();
-  await expect(page.getByRole('status')).toHaveText('Offline scanner ready', { timeout: 60_000 });
+  await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 60_000 });
   const retiredAssets = await page.evaluate(async () => {
     const name = (await caches.keys()).find(key => key.startsWith('nihonlens-pack-'))!;
     return (await (await caches.open(name)).keys()).some(key => key.url.includes('/marian/'));
@@ -72,6 +76,7 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
   await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Detected prices' })).toContainText('¥1,280 → ₱512.00');
+  await page.locator('summary').filter({ hasText: 'Exchange rate' }).click();
   await page.getByLabel('PHP per JPY').fill('0.50');
   await expect(page.locator('.overlay')).toHaveText('₱640.00');
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
@@ -90,7 +95,7 @@ test('retries transient failures and rejects incomplete scanner files', async ({
   }));
   await page.goto('/');
   await page.getByRole('button', { name: 'Download scanner' }).click();
-  await expect(page.getByRole('status')).toHaveText(/Scanner unavailable/);
+  await expect(page.locator('.pack-status')).toHaveText(/Scanner unavailable/);
   expect(attempts).toBe(2);
   expect(await page.evaluate(async () => (await caches.keys()).some(key => key.startsWith('nihonlens-pack-')))).toBe(false);
 });
