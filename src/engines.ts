@@ -1,5 +1,5 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
-import { packPath } from './pack-info';
+import { packCache, packPath } from './pack-info';
 import { normalize, type Reading } from './vision';
 
 function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
@@ -18,12 +18,22 @@ export class Engines {
   private closed = false;
   private vertical = false;
 
+  constructor(private readonly lowMemory = false) {}
+
   async read(canvas: HTMLCanvasElement, vertical: boolean): Promise<Reading[]> {
     if (this.closed) throw new Error('OCR stopped.');
     if (!this.ocr || this.vertical !== vertical) {
       await this.ocr?.terminate();
+      let workerPath = packPath + 'runtime/worker.min.js';
+      let workerUrl: string | undefined;
+      if (this.lowMemory) {
+        const cached = await (await caches.open(packCache)).match(workerPath);
+        if (!cached) throw new Error('The Japanese OCR worker is missing from the offline pack.');
+        workerUrl = URL.createObjectURL(await cached.blob());
+        workerPath = workerUrl;
+      }
       const started = createWorker(vertical ? 'jpn_vert' : 'jpn', OEM.LSTM_ONLY, {
-        workerPath: packPath + 'runtime/worker.min.js', workerBlobURL: false,
+        workerPath, workerBlobURL: false,
         corePath: packPath + 'runtime/tesseract-core-lstm.wasm.js',
         langPath: packPath + 'ocr', cacheMethod: 'none', gzip: false,
       });
@@ -31,7 +41,9 @@ export class Engines {
         this.ocr = await deadline(started, 'Japanese OCR initialization timed out.');
       } catch (error) {
         void started.then(worker => worker.terminate(), () => {});
-        throw error;
+        throw error ?? new Error('Japanese OCR could not start.');
+      } finally {
+        if (workerUrl) URL.revokeObjectURL(workerUrl);
       }
       if (this.closed) {
         await this.ocr.terminate();
@@ -68,8 +80,21 @@ export class Engines {
     }
     return deadline(new Promise<string>((resolve, reject) => {
       this.pending = { resolve, reject };
-      this.translator!.postMessage({ id: ++this.id, text });
+      this.translator!.postMessage({ id: ++this.id, text, lowMemory: this.lowMemory });
     }), 'English translation timed out.');
+  }
+
+  async releaseOcr() {
+    const worker = this.ocr;
+    this.ocr = undefined;
+    await worker?.terminate();
+  }
+
+  releaseTranslation() {
+    this.translator?.terminate();
+    this.translator = undefined;
+    this.pending?.reject(new Error('Translation stopped.'));
+    this.pending = undefined;
   }
 
   async smokeTest() {
@@ -88,6 +113,7 @@ export class Engines {
         throw new Error((vertical ? 'Vertical' : 'Horizontal') + ' Japanese OCR failed its verification image.');
       }
     }
+    if (this.lowMemory) await this.releaseOcr();
     const translation = await this.translate(recognized);
     if (!/hello|hi\b|good afternoon/i.test(translation)) throw new Error('Translation failed its Japanese verification sentence.');
     return translation;
@@ -95,9 +121,7 @@ export class Engines {
 
   async close() {
     this.closed = true;
-    this.translator?.terminate();
-    this.pending?.reject(new Error('Translation stopped.'));
-    this.pending = undefined;
-    await this.ocr?.terminate();
+    this.releaseTranslation();
+    await this.releaseOcr();
   }
 }

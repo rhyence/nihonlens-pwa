@@ -7,6 +7,9 @@ import { convert, fill, FrameGate, Tracker, TranslationCache, yen, type Track } 
 import { loadSettings, saveSettings, type Settings } from './settings';
 import './style.css';
 
+const scanOnFreeze = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
   const [status, setStatus] = useState('Checking offline pack…');
@@ -16,6 +19,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [camera, setCamera] = useState(false);
   const [starting, setStarting] = useState(false);
   const [frozen, setFrozen] = useState(false);
+  const [scanMessage, setScanMessage] = useState('');
+  const still = useRef<HTMLCanvasElement | undefined>(undefined);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selected, setSelected] = useState<Track>();
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -50,10 +55,11 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         await controlled();
       }
       setStatus('Verifying Japanese OCR and English translation…');
-      const engine = new Engines();
+      const engine = new Engines(scanOnFreeze);
       await engines.current?.close();
       engines.current = engine;
       await engine.smokeTest();
+      if (scanOnFreeze) engine.releaseTranslation();
       controller.signal.throwIfAborted();
       setReady(true);
       setStatus('Offline Ready');
@@ -89,7 +95,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }, [settings, initialSettings]);
 
   useEffect(() => {
-    if (!ready || !camera || frozen) return;
+    if (!ready || !camera || (!settings.translate && !settings.currency) || (scanOnFreeze && !frozen)) return;
     const surface = document.createElement('canvas');
     const context = surface.getContext('2d')!;
     const frameGate = gate.current;
@@ -97,32 +103,46 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     let running = true;
     const scan = async () => {
       const element = video.current;
-      if (document.visibilityState === 'visible' && element?.videoWidth &&
-          element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-          (settings.translate || settings.currency) && engines.current) {
+      const snapshot = frozen ? still.current : undefined;
+      if (frozen && !snapshot) return;
+      const liveFrame = element?.videoWidth && element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+      if (document.visibilityState === 'visible' && (snapshot || liveFrame) && engines.current) {
         try {
           const engine = engines.current;
-          const width = element.videoWidth;
-          const height = element.videoHeight;
+          const width = snapshot?.width ?? element!.videoWidth;
+          const height = snapshot?.height ?? element!.videoHeight;
           const scale = Math.min(1, 960 / Math.max(width, height));
-          await frameGate.run(async () => {
+          const processed = await frameGate.run(async () => {
+            if (frozen) setScanMessage('Reading frozen frame…');
             surface.width = Math.round(width * scale);
             surface.height = Math.round(height * scale);
-            context.drawImage(element, 0, 0, surface.width, surface.height);
-            const readings = await engine.read(surface, settings.vertical);
+            if (!snapshot) context.drawImage(element!, 0, 0, surface.width, surface.height);
+            const readings = await engine.read(snapshot ?? surface, settings.vertical);
+            if (scanOnFreeze) await engine.releaseOcr();
+            if (frozen && running && document.visibilityState === 'visible') {
+              setSource({ w: width, h: height });
+              setTracks(readings.map((reading, id) => ({ ...reading, id, hits: 2, seen: performance.now() })));
+              if (settings.translate && readings.length) setScanMessage('Translating frozen frame…');
+            }
             if (settings.translate && running && document.visibilityState === 'visible') {
               for (const reading of readings.slice(0, 4)) {
                 if (!running || document.visibilityState !== 'visible') break;
                 reading.english = await translations.current.get(reading.text, text => engine.translate(text));
               }
             }
+            if (scanOnFreeze) engine.releaseTranslation();
             return readings;
           }, readings => {
             if (document.visibilityState !== 'visible') return;
             setSource({ w: width, h: height });
-            setTracks(tracker.current.update(readings, performance.now()));
+            if (frozen) {
+              setTracks(readings.map((reading, id) => ({ ...reading, id, hits: 2, seen: performance.now() })));
+              setScanMessage(readings.length ? '' : 'No text found. Move closer and try again.');
+            } else setTracks(tracker.current.update(readings, performance.now()));
           });
+          if (frozen && processed && document.visibilityState === 'visible') return;
         } catch (error) {
+          setScanMessage('');
           setReady(false);
           await engines.current?.close();
           engines.current = undefined;
@@ -146,6 +166,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
 
   function stopCamera() {
     gate.current.invalidate();
+    still.current = undefined;
+    setScanMessage('');
     stream.current?.getTracks().forEach(track => track.stop());
     stream.current = undefined;
     if (video.current) video.current.srcObject = null;
@@ -179,7 +201,23 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     if (frozen) {
       try { await video.current?.play(); } catch (error) { setNotice(String(error)); return; }
       setSelected(undefined);
-    } else video.current?.pause();
+      still.current = undefined;
+      setScanMessage('');
+      tracker.current.clear();
+      setTracks([]);
+    } else {
+      const element = video.current;
+      if (!element?.videoWidth || element.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+      const frame = document.createElement('canvas');
+      const scale = Math.min(1, 960 / Math.max(element.videoWidth, element.videoHeight));
+      frame.width = Math.round(element.videoWidth * scale);
+      frame.height = Math.round(element.videoHeight * scale);
+      frame.getContext('2d')!.drawImage(element, 0, 0, frame.width, frame.height);
+      still.current = frame;
+      element.pause();
+      setTracks([]);
+      setScanMessage(ready ? '' : 'Wait for Offline Ready before scanning.');
+    }
     setFrozen(!frozen);
   }
 
@@ -208,8 +246,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </section>
     <div className="row">
       <button disabled={starting} onClick={camera ? stopCamera : () => void startCamera()}>{camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}</button>
-      <button disabled={!camera} onClick={() => void toggleFreeze()}>{frozen ? 'Resume' : 'Freeze'}</button>
+      <button disabled={!camera} onClick={() => void toggleFreeze()}>{frozen ? 'Resume' : scanOnFreeze ? 'Freeze & scan' : 'Freeze'}</button>
     </div>
+    {camera && scanOnFreeze && !frozen && <p>Tap Freeze &amp; scan to translate a still frame.</p>}
+    {scanMessage && <p aria-live="polite">{scanMessage}</p>}
     {selected && <aside><strong>Original Japanese</strong><p lang="ja">{selected.text}</p><button onClick={() => setSelected(undefined)}>Close</button></aside>}
     {notice && <p role="alert">{notice}</p>}
     <section className="panel">

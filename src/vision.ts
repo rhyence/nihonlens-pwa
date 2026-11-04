@@ -83,7 +83,7 @@ export class FrameGate {
   private busy = false;
   invalidate() { this.epoch++; }
   async run<T>(work: () => Promise<T>, publish: (value: T) => void) {
-    if (this.busy) return;
+    if (this.busy) return false;
     this.busy = true;
     const epoch = this.epoch;
     try {
@@ -94,5 +94,6 @@ export class FrameGate {
     } finally {
       this.busy = false;
     }
+    return epoch === this.epoch;
   }
 }

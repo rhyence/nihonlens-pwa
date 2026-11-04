@@ -12,9 +12,14 @@ wasm.initTimeout = 20000;
 wasm.wasmPaths = self.location.origin + packPath + 'runtime/';
 
 let translator: Promise<TranslationPipeline> | undefined;
-self.onmessage = async ({ data }: MessageEvent<{ id: number; text: string }>) => {
+self.onmessage = async ({ data }: MessageEvent<{ id: number; text: string; lowMemory: boolean }>) => {
   try {
-    translator ??= pipeline<'translation'>('translation', 'marian', { device: 'wasm', dtype: 'q8', local_files_only: true });
+    translator ??= pipeline<'translation'>('translation', 'marian', {
+      device: 'wasm', dtype: 'q8', local_files_only: true,
+      session_options: data.lowMemory
+        ? { graphOptimizationLevel: 'basic', enableCpuMemArena: false, enableMemPattern: false }
+        : undefined,
+    });
     const pipe = await translator;
     const result = await pipe(data.text, { max_new_tokens: 48, num_beams: 1 } as Parameters<TranslationPipeline>[1]);
     if (Array.isArray(result[0])) throw new Error('Unexpected translation result.');

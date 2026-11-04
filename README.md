@@ -11,7 +11,7 @@ npm test
 npm run preview
 ```
 
-Use the preview server to test service workers and offline use. A phone needs HTTPS to use the camera. The app asks for the rear camera and processes at most one frame at a time. Freeze pauses inference and preserves the visible overlays. Tap an overlay to inspect the OCR text. Enable **Vertical Japanese** for top-to-bottom text. Enter the amount of PHP or USD received for one yen under Settings.
+Use the preview server to test service workers and offline use. A phone needs HTTPS to use the camera. The app asks for the rear camera and processes at most one frame at a time. Freeze captures and scans a still frame. On iPhone and iPad, use **Freeze & scan** to translate a still frame. Live scanning stays off on those devices to reduce memory pressure. Tap an overlay to inspect the OCR text. Enable **Vertical Japanese** for top-to-bottom text. Enter the amount of PHP or USD received for one yen under Settings.
 
 ## Offline pack
 

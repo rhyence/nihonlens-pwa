@@ -4,6 +4,10 @@ import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+test.use({
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+});
+
 test('installs the shell, preserves settings, and starts and freezes a camera preview offline', async ({ page, context }) => {
   await page.goto('/');
   await page.evaluate(async () => {
@@ -25,7 +29,7 @@ test('installs the shell, preserves settings, and starts and freezes a camera pr
   await expect(page.getByRole('status')).toHaveText(/needs a download/);
   await page.getByRole('button', { name: 'Start camera' }).click();
   await expect(page.getByRole('button', { name: 'Stop camera' })).toBeVisible();
-  await page.getByRole('button', { name: 'Freeze' }).click();
+  await page.getByRole('button', { name: 'Freeze & scan' }).click();
   await expect(page.locator('video')).toHaveJSProperty('paused', true);
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(page.locator('video')).toHaveJSProperty('paused', false);
@@ -82,9 +86,10 @@ test('runs actual Japanese OCR and translation after offline reload and detects 
     await expect(page.getByRole('status')).toHaveText('Offline Ready', { timeout: 90_000 });
     await page.getByLabel('PHP per JPY').fill('0.40');
     await page.getByRole('button', { name: 'Start camera' }).click();
-    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.overlay')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Freeze & scan' }).click();
+    await expect(page.locator('.overlay').filter({ hasText: /hello/i })).toBeVisible({ timeout: 80_000 });
     await expect(page.locator('.overlay').filter({ hasText: 'PHP 512.00' })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole('button', { name: 'Freeze' }).click();
     await page.getByRole('button', { name: 'PHP 512.00' }).click();
     await expect(page.getByText('Original Japanese')).toBeVisible();
     await expect(page.locator('[lang=ja]')).toHaveText(/1,280\s*円/);
