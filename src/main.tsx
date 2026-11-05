@@ -4,7 +4,7 @@ import { Engines } from './engines';
 import { scanAngles } from './image';
 import { controlled, downloadPack, removePack, verifyInstalled } from './pack';
 import { packBytes } from './pack-info';
-import { convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track } from './vision';
+import { convert, fill, placeLabel, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track, type Box } from './vision';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { cartTotal, convertedCents, formatCents, formatShopping, itemTotal, loadShopping, parseCents, shoppingKey, type Item } from './shopping';
 import './style.css';
@@ -336,6 +336,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     else addItem(String(amount));
   }
 
+  const placedLabels: Box[] = [];
   return <main>
     {updateReady && <div className="update-banner" role="status">Scanner update ready <button onClick={() => { stopCamera(); window.location.reload(); }}>Update now</button></div>}
     <header className="app-header compact-header"><span className="brand-mark" aria-label="NihonLens">¥</span><button className="menu-toggle" aria-label="Open menu" onClick={() => menu.current?.showModal()}>☰</button></header>
@@ -347,17 +348,20 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <div className="camera-badge"><span className={camera && !frozen ? 'live-dot' : ''} />{frozen ? 'FROZEN FRAME' : camera ? 'LIVE CAMERA' : 'PRICE SCANNER'}</div>
       {camera && tracks.length > 0 && <button className="detected-button" onClick={() => detected.current?.showModal()}>View {tracks.length} prices</button>}
       {!camera && <div className="hint"><div className="viewfinder" aria-hidden="true">¥</div><h3>A little clarity on every price.</h3><p>Point at ¥500 or 500円.<br />See what it costs in {currencyName.toLowerCase()}.</p><span className="privacy-note">Private · On your device</span></div>}
-      {camera && view.w > 8 && source.w > 0 && tracks.map(track => {
+      {camera && view.w > 8 && source.w > 0 && [...tracks].sort((a, b) => a.box.y - b.box.y).map(track => {
         const price = display(track);
         const box = fill(track.box, source.w, source.h, view.w, view.h);
         if (!price || box.x + box.w < 0 || box.y + box.h < 0 || box.x > view.w || box.y > view.h) return null;
         if (tracks.length > 6) return <span key={track.id} className="detected-box" aria-hidden="true" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />;
         const width = Math.min(Math.ceil(labelMeasure.measureText(price).width) + 18, view.w - 8);
         const left = Math.max(4, Math.min(view.w - width - 4, box.x + box.w / 2 - width / 2));
-        const top = Math.max(4, Math.min(view.h - 34, box.y));
+        const placement = placeLabel({ x: left, y: box.y, w: width, h: 34 }, placedLabels, view.h);
+        if (!placement) return null;
+        placedLabels.push(placement);
+        const top = placement.y;
         return <button className="overlay price" key={track.id} style={{ width, left, top }} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}>{price}</button>;
       })}
-      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
+      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
     </section>
     <div className="camera-controls">
       <button className={camera ? 'secondary' : 'primary'} disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
@@ -376,7 +380,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </dialog>
     <dialog ref={review} className="sheet" aria-labelledby="review-title">
       <div className="sheet-heading"><h2 id="review-title">Check this price</h2><button aria-label="Close price review" onClick={() => review.current?.close()}>×</button></div>
-      <p>The currency symbol was unclear. Confirm this is a yen price, then correct the number if needed.</p>
+      <p>Confirm this number is a yen price, then correct it if needed. The scanner could not reliably read the currency symbol.</p>
       <label className="amount-label">Price in yen<span className="amount-field"><span aria-hidden="true">¥</span><input aria-label="Price in yen" inputMode="numeric" maxLength={12} value={reviewPrice} onChange={event => setReviewPrice(event.target.value)} /></span></label>
       <button className="primary" disabled={!/^\d{1,12}$/.test(reviewPrice)} onClick={() => { addItem(reviewPrice); review.current?.close(); }}>Confirm and add</button>
     </dialog>
@@ -411,7 +415,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget</button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.05.3</p>
+      <p className="build-version">Scanner build 2026.11.05.4</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>

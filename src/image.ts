@@ -1,7 +1,7 @@
 import type { Box } from './vision';
 
 // First try the untouched image. Only unsuccessful scans use these fallbacks.
-export const scanAngles = [0, 0, 0, -15, 15, -30, 30];
+export const scanAngles = [0, 0, 0, -15, 15, -30, 30, 0];
 
 export function restoreBox(box: Box, width: number, height: number, rotatedWidth: number, rotatedHeight: number, angle: number): Box {
   const radians = angle * Math.PI / 180;

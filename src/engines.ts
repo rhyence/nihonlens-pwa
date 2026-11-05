@@ -40,13 +40,14 @@ export class Engines {
       }
     }
     const worker = this.ocr;
-    const { canvas, map } = enhance(source, attempt);
+    const { canvas, map } = enhance(source, attempt === 7 ? 0 : attempt);
     const { width, height } = canvas;
-    const recognize = async (mode: PSM): Promise<Reading[]> => {
-      await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '' });
+    const recognize = async (mode: PSM, numbersOnly = false): Promise<Reading[]> => {
+      await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: numbersOnly ? '0123456789,¥￥円' : '' });
       const { data } = await deadline(worker.recognize(canvas, {}, { blocks: true }), 'Japanese OCR timed out.');
       const lines = (data.blocks ?? []).flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines));
-      return lines.flatMap(({ text, bbox, confidence }) => {
+      const regions = numbersOnly ? lines.flatMap(line => line.words) : lines;
+      return regions.flatMap(({ text, bbox, confidence }) => {
         const x0 = Math.max(0, bbox.x0);
         const y0 = Math.max(0, bbox.y0);
         const x1 = Math.min(width, bbox.x1);
@@ -62,6 +63,21 @@ export class Engines {
     const confident = confusedYenCandidates(lines);
     const candidates = [...confident, ...possiblePriceCandidates(lines).filter(candidate =>
       !confident.some(other => other.box === candidate.box))].slice(0, 24);
+    // A bounded backup pass looks for digits even when the yen glyph is lost.
+    // Never expose bare numeric OCR directly: verify its crop and require review.
+    const backupCandidates = new Set<Reading>();
+    if (attempt === 7 && !yenReadings(lines).length) {
+      const numeric = await recognize(PSM.SPARSE_TEXT, true);
+      for (const reading of numeric) {
+        const digits = normalize(reading.text).replace(/[¥￥円,\s]/g, '');
+        if (!/^\d{2,6}$/.test(digits) || BigInt(digits) < 10n || reading.box.w * width < reading.box.h * height * 0.8) continue;
+        if (candidates.some(other => Math.abs(other.box.x - reading.box.x) < 0.03 && Math.abs(other.box.y - reading.box.y) < 0.03)) continue;
+        if (candidates.length >= 24) break;
+        const candidate = { ...reading, text: '¥' + digits, uncertain: true };
+        candidates.push(candidate);
+        backupCandidates.add(candidate);
+      }
+    }
     if (candidates.length) {
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE, tessedit_char_whitelist: '0123456789,¥￥円' });
       for (const candidate of candidates) {
@@ -72,6 +88,7 @@ export class Engines {
         const w = Math.min(width - x, Math.ceil(box.w * width + padding * 2));
         const h = Math.min(height - y, Math.ceil(box.h * height + padding * 2));
         // Normalize overly magnified digits as well as small text.
+        const votes = new Map<string, number>();
         for (const targetHeight of [60, 40, 160]) {
           const zoom = Math.min(3, 1024 / w, targetHeight / h);
           const crop = document.createElement('canvas');
@@ -81,7 +98,15 @@ export class Engines {
           const { data } = await deadline(worker.recognize(crop), 'Price verification timed out.');
           const confirmed = normalize(data.text).replace(/[¥￥円,\s]/g, '');
           // An independent numeric read must agree on every digit before display.
-          if (/^\d+$/.test(confirmed) && BigInt(confirmed) === yen(candidate.text)) { recovered.push(candidate); break; }
+          if (!/^\d{2,6}$/.test(confirmed) || BigInt(confirmed) < 10n) continue;
+          if (BigInt(confirmed) === yen(candidate.text)) { recovered.push(candidate); break; }
+          // Backup segmentation can include a size label or the currency as digits.
+          // Correct it only when two independently scaled crop reads agree.
+          if (backupCandidates.has(candidate)) {
+            const count = (votes.get(confirmed) ?? 0) + 1;
+            votes.set(confirmed, count);
+            if (count >= 2) { recovered.push({ ...candidate, text: '¥' + confirmed }); break; }
+          }
         }
       }
     }

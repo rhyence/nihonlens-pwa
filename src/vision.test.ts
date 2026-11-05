@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings } from './vision';
+import { confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, placeLabel, yen, yenReadings } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -44,22 +44,24 @@ it('drops overlapping work and rejects stale frames', async () => {
   expect(publish).toHaveBeenCalledExactlyOnceWith('fresh');
 });
 
-it('smooths detected prices and immediately removes missing overlays', () => {
+it('smooths detected prices and tolerates one brief missed scan', () => {
   const tracker = new Tracker();
   const line = { text: 'こんにちは', box: { x: 0.1, y: 0.2, w: 0.3, h: 0.1 } };
   expect(tracker.update([line], 0)).toEqual([]);
   const [first] = tracker.update([{ ...line, box: { ...line.box, x: 0.12 } }], 800);
-  expect(first.box.x).toBeCloseTo(0.107);
-  expect(tracker.update([], 801)).toEqual([]);
+  expect(first.box.x).toBeCloseTo(0.104);
+  expect(tracker.update([], 801)[0].id).toBe(first.id);
+  expect(tracker.update([], 802)).toEqual([]);
   expect(tracker.update([line], 802)).toEqual([]);
 });
 
-it('removes only the missing price when other prices remain visible', () => {
+it('removes only the missing price after a second missed scan', () => {
   const tracker = new Tracker();
   const first = { text: '¥500', box: { x: 0.1, y: 0.2, w: 0.3, h: 0.1 } };
   const second = { text: '¥800', box: { x: 0.1, y: 0.6, w: 0.3, h: 0.1 } };
   const initial = tracker.update([first, second], 0, 1);
-  const remaining = tracker.update([second], 1, 1);
+  expect(tracker.update([second], 1, 1)).toHaveLength(2);
+  const remaining = tracker.update([second], 2, 1);
   expect(remaining).toHaveLength(1);
   expect(remaining[0].id).toBe(initial[1].id);
   expect(remaining[0].text).toBe('¥800');
@@ -121,4 +123,32 @@ it('recovers varied suffixes and attached size-label noise only as reviewed colu
   expect(possiblePriceCandidates(rows).map(row => [row.text, row.uncertain])).toEqual([['¥480', true], ['¥380', true]]);
   expect(possiblePriceCandidates(rows.map(row => ({ ...row, text: row.text.replace('380p', '380pg') }))).map(row => row.text)).toEqual(['¥480', '¥380']);
   expect(possiblePriceCandidates(rows.slice(0, 1))).toEqual([]);
+});
+
+it('expires a missed price after the hold window and resets on a successful read', () => {
+  const tracker = new Tracker();
+  const price = { text: '¥240', box: { x: .1, y: .2, w: .3, h: .1 } };
+  const [first] = tracker.update([price], 0, 1);
+  expect(tracker.update([], 200, 1)[0].id).toBe(first.id);
+  expect(tracker.update([price], 400, 1)[0].id).toBe(first.id);
+  expect(tracker.update([], 500, 1)).toHaveLength(1);
+  expect(tracker.update([], 3000, 1)).toHaveLength(0);
+});
+it('separates stacked labels while keeping them within the camera', () => {
+  const first = { x: 20, y: 50, w: 90, h: 34 };
+  const second = placeLabel({ ...first, y: 70 }, [first], 200)!;
+  expect(second.y).toBeGreaterThanOrEqual(88);
+  const third = placeLabel({ ...first, y: 90 }, [first, second], 200)!;
+  expect(third.y + third.h).toBeLessThanOrEqual(196);
+  expect(third.y + third.h <= first.y || third.y >= second.y + second.h).toBe(true);
+});
+
+it('matches identical stacked prices to the closest region instead of swapping rows', () => {
+  const tracker = new Tracker();
+  const first = { text: '¥500', box: { x: .1, y: .2, w: .3, h: .1 } };
+  const second = { ...first, box: { ...first.box, y: .28 } };
+  const initial = tracker.update([first, second], 0, 1);
+  const moved = tracker.update([{ ...second, box: { ...second.box, y: .25 } }, first], 500, 1);
+  expect(moved[0].id).toBe(initial[1].id);
+  expect(moved[1].id).toBe(initial[0].id);
 });

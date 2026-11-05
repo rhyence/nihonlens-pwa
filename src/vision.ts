@@ -1,6 +1,6 @@
 export type Box = { x: number; y: number; w: number; h: number };
 export type Reading = { text: string; box: Box; confidence?: number; uncertain?: boolean };
-export type Track = Reading & { id: number; seen: number; hits: number };
+export type Track = Reading & { id: number; seen: number; hits: number; misses?: number };
 export function normalize(text: string) {
   return text.normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
@@ -102,14 +102,21 @@ export class Tracker {
   update(readings: Reading[], now: number, minimumHits = 2) {
     const unmatched = this.tracks.filter(track => now - track.seen < 3200);
     const active = readings.map(reading => {
-      const index = unmatched.findIndex(track => overlap(track.box, reading.box) > 0.3 && track.text === reading.text);
+      let index = -1, bestOverlap = 0.3;
+      unmatched.forEach((track, candidateIndex) => {
+        const score = track.text === reading.text ? overlap(track.box, reading.box) : 0;
+        if (score > bestOverlap) { index = candidateIndex; bestOverlap = score; }
+      });
       if (index < 0) return { ...reading, id: ++this.id, seen: now, hits: 1 };
       const [old] = unmatched.splice(index, 1);
       const box = { ...reading.box };
-      for (const key of ['x', 'y', 'w', 'h'] as const) box[key] = old.box[key] * 0.65 + box[key] * 0.35;
+      for (const key of ['x', 'y', 'w', 'h'] as const) box[key] = old.box[key] * 0.8 + box[key] * 0.2;
       return { ...reading, box, id: old.id, seen: now, hits: old.hits + 1 };
     });
-    this.tracks = active.slice(0, 40);
+    // Tolerate one brief OCR miss; do not carry a vanished price indefinitely.
+    const held = unmatched.filter(track => now - track.seen < 2200 && !(track.misses ?? 0) && !active.some(current => overlap(current.box, track.box) > 0.3))
+      .map(track => ({ ...track, misses: 1 }));
+    this.tracks = [...active, ...held].slice(0, 40);
     return this.tracks.filter(track => track.hits >= minimumHits);
   }
   clear() { this.tracks = []; }
@@ -133,4 +140,13 @@ export class FrameGate {
     }
     return epoch === this.epoch;
   }
+}
+
+// Find the nearest free vertical slot for compact labels on stacked menu rows.
+export function placeLabel(box: Box, placed: Box[], height: number): Box | undefined {
+  const slots = [box.y, ...placed.flatMap(other => [other.y + other.h + 4, other.y - box.h - 4])];
+  return slots.map(y => ({ ...box, y: Math.max(4, Math.min(height - box.h - 4, y)) }))
+    .sort((a, b) => Math.abs(a.y - box.y) - Math.abs(b.y - box.y))
+    .find(candidate => placed.every(other => candidate.x + candidate.w + 2 <= other.x || other.x + other.w + 2 <= candidate.x ||
+      candidate.y + candidate.h + 2 <= other.y || other.y + other.h + 2 <= candidate.y));
 }
