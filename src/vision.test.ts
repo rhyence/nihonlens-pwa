@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings } from './vision';
+import { confusedYenCandidates, convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -96,4 +96,14 @@ it('repairs grouped yen OCR readings', () => {
   expect(yen('税込 1.280円')).toBe(1280n);
   expect(yen('12.50円')).toBeUndefined();
   expect(yenReadings([{ text: '価格 1.280円', box: { x: 0, y: 0, w: 1, h: 1 } }])[0].text).toBe('¥1,280');
+});
+
+it('offers ambiguous yen glyphs for confirmation only in a confident aligned price column', () => {
+  const rows = ['き480ロ', '580ロ', '380ロg'].map((text, i) => ({ text, confidence: 74, box: { x: 0.1, y: 0.2 + i * 0.08, w: 0.17, h: 0.06 } }));
+  expect(confusedYenCandidates(rows).map(row => row.text)).toEqual(['¥480', '¥580', '¥380']);
+  expect(confusedYenCandidates(rows.slice(0, 1))).toEqual([]);
+  expect(confusedYenCandidates(rows.map(row => ({ ...row, confidence: 30 })))).toEqual([]);
+  expect(confusedYenCandidates(rows.map(row => ({ ...row, text: '480g' })))).toEqual([]);
+  expect(confusedYenCandidates(rows.map(row => ({ ...row, text: '480' })))).toEqual([]);
+  expect(confusedYenCandidates(rows.map((row, i) => ({ ...row, box: { ...row.box, x: i * 0.4 } })))).toEqual([]);
 });

@@ -220,7 +220,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             return yenReadings(await ocr.read(canvas, attempt));
           }, readings => {
             completed = readings.length > 0 || attempt === scanAngles.length - 1;
-            if (!readings.length) attempt = (attempt + 1) % scanAngles.length;
+            if (!readings.length) attempt = frozen && attempt === 0 ? 2 : (attempt + 1) % scanAngles.length;
             setSource({ w, h });
             setTracks(tracker.current.update(readings, performance.now(), 1));
             setScanning(false);

@@ -37,6 +37,26 @@ export function yenReadings(readings: Reading[]): Reading[] {
   });
 }
 
+// Small 円 glyphs can lose their internal strokes and be recognized as ロ or 口.
+// Require a repeated, aligned price column; never infer prices from bare digits/g.
+export function confusedYenCandidates(readings: Reading[]): Reading[] {
+  const candidates = readings.flatMap(reading => {
+    if ((reading.confidence ?? 0) < 60) return [];
+    const match = normalize(reading.text).match(/(?<![\dA-Za-z])((?:\d{1,3}(?:[,.]\d{3})+|\d{2,7}))\s*[ロ口囗](?:[a-z])?$/u);
+    if (!match) return [];
+    return [{ ...reading, text: '¥' + BigInt(match[1].replace(/[,.]/g, '')).toLocaleString('en-US') }];
+  });
+  const anchors = [...candidates, ...yenReadings(readings)];
+  return candidates.filter(candidate => anchors.some(other => {
+    if (other === candidate) return false;
+    const a = candidate.box, b = other.box;
+    const vertical = Math.abs((a.y + a.h / 2) - (b.y + b.h / 2));
+    return vertical > Math.min(a.h, b.h) * 0.6 && vertical < Math.max(a.h, b.h) * 6 &&
+      Math.abs((a.x + a.w / 2) - (b.x + b.w / 2)) < Math.max(a.w, b.w) * 0.75 &&
+      Math.max(a.h, b.h) < Math.min(a.h, b.h) * 2.8;
+  }));
+}
+
 export function pesosToYen(amount: string, rate: string) {
   if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(amount) || !/^\d{0,8}(?:\.\d{1,10})?$/.test(rate) || !rate) return;
   const [whole, fraction = ''] = rate.split('.');

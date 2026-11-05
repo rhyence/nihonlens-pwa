@@ -1,7 +1,7 @@
 import type { Box } from './vision';
 
 // First try the untouched image. Only unsuccessful scans use these fallbacks.
-export const scanAngles = [0, 0, -15, 15, -30, 30];
+export const scanAngles = [0, 0, 0, -15, 15, -30, 30];
 
 export function restoreBox(box: Box, width: number, height: number, rotatedWidth: number, rotatedHeight: number, angle: number): Box {
   const radians = angle * Math.PI / 180;
@@ -18,7 +18,8 @@ export function restoreBox(box: Box, width: number, height: number, rotatedWidth
 }
 
 export function enhance(source: HTMLCanvasElement, attempt: number) {
-  if (!attempt) return { canvas: source, map: (box: Box) => box };
+  // Live attempt 1 preserves the higher-resolution image before enhancement.
+  if (attempt < 2) return { canvas: source, map: (box: Box) => box };
   const { width, height } = source;
   const canvas = document.createElement('canvas');
   canvas.width = width;

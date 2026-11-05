@@ -155,3 +155,37 @@ test('retries transient failures and rejects incomplete scanner files', async ({
   expect(attempts).toBe(2);
   expect(await page.evaluate(async () => (await caches.keys()).some(key => key.startsWith('nihonlens-pack-')))).toBe(false);
 });
+
+test('recognizes three menu prices in a real photo and adds the chosen price', async ({ page, context }) => {
+  const photo = process.env.NIHON_MENU_IMAGE;
+  const fixture = process.env.NIHON_MODEL_DIR;
+  test.skip(!photo || !fixture, 'Set NIHON_MENU_IMAGE and NIHON_MODEL_DIR for the private photo regression.');
+  await context.route('https://raw.githubusercontent.com/**/jpn.traineddata', route => route.fulfill({ path: join(fixture!, 'jpn.traineddata'), headers: { 'access-control-allow-origin': '*' } }));
+  await context.route('**/menu-regression.jpg', route => route.fulfill({ path: photo!, contentType: 'image/jpeg' }));
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const image = new Image(); image.src = '/menu-regression.jpg'; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+      const paint = () => canvas.getContext('2d')!.drawImage(image, 0, 0);
+      const stream = canvas.captureStream(8); paint();
+      const timer = window.setInterval(paint, 100);
+      stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
+      return stream;
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Download scanner' }).click();
+  await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
+  await page.getByRole('button', { name: 'Close menu' }).click();
+  await expect(page.locator('.menu-sheet')).not.toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Start camera' }).click();
+  await expect(page.locator('.overlay')).toHaveText(['₱192.00', '₱232.00', '₱152.00'], { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+  await expect(page.locator('.overlay')).toHaveText(['₱192.00', '₱232.00', '₱152.00'], { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Add ¥580 to shopping list', exact: true }).click();
+  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+  await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱232.00');
+  await expect(page.getByLabel('Item 1 yen price', { exact: true })).toHaveValue('580');
+});
