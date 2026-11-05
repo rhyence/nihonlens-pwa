@@ -37,7 +37,7 @@ video,.frozen-preview{width:100%;height:100%;position:absolute;inset:0;object-fi
 .secondary:hover{background:#ffffff18}
 .scan-status{min-height:48px;padding:12px 18px 16px;text-align:center;font-size:12px;color:#c2d3c5}
 .overlay{position:absolute;z-index:2;background:#c4ef9bf5;color:#132f20;font-size:16px;line-height:1.2;overflow-wrap:anywhere;border:1px solid #e0ffc1;border-radius:10px;box-shadow:0 3px 12px #0005}
-.overlay.price{padding:10px;text-align:center;font-weight:750;pointer-events:none}
+.overlay.price{padding:6px 8px;text-align:center;font-weight:750;pointer-events:none}
 .panel{background:#fff;border:1px solid #e0e6de;border-radius:20px;padding:20px;margin:14px 0}
 .direction-switch{display:flex;background:#f0f3ed;border-radius:12px;padding:4px;gap:4px;margin:18px 0}
 .direction-switch button{flex:1;border:0;background:transparent;font-size:13px;min-height:40px;padding:8px}
@@ -117,7 +117,7 @@ main{padding-bottom:110px}
 .scan-shortcuts{display:flex;gap:10px}.scan-shortcuts button{flex:1;font-size:13px}
 .cart-notice{font-size:12px;color:#657864;margin:10px 0;min-height:20px}
 :root:not([data-theme=light]) .cart-notice{color:#b3c8a9}
-.overlay.price{pointer-events:auto;cursor:pointer;min-height:44px;touch-action:manipulation}
+.overlay.price{pointer-events:auto;cursor:pointer;min-height:0;touch-action:manipulation}
 :root:not([data-theme=light]) button.overlay.price{background:#c4ef9bf5;color:#132f20;border-color:#e0ffc1}
 .sheet{inset:0;margin:auto;width:min(100% - 24px,560px);max-height:88dvh;padding:20px;border:1px solid #d5ddcf;border-radius:24px;overflow-y:auto;overscroll-behavior:contain;background:#f4f6f2;color:#182c2b}
 .sheet::backdrop{background:#06120cae}
@@ -162,12 +162,9 @@ main{padding-bottom:110px}
 .camera-progress{position:absolute;bottom:10px;left:12px;right:12px;z-index:1;background:#10251fe6;border-radius:10px;min-height:0;padding:8px 12px;pointer-events:none}
 .scan-shortcuts{margin-top:24px}
 .screen-reader-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.overlay.price small{display:block;font-size:9px;font-weight:500;color:inherit;line-height:1.1;margin-top:3px}
-:root:not([data-theme=light]) button.uncertain-price,button.uncertain-price{background:#f4dfab;color:#382f12;border-color:#f8e8c4}
 .detected-button{position:absolute;right:10px;top:12px;z-index:4;font-size:11px;padding:6px 10px;min-height:44px}
-.detected-box{position:absolute;z-index:2;border:1px solid #f4dfab;pointer-events:none;background:#f4dfab20}
+.detected-box{position:absolute;z-index:2;border:1px solid #c4ef9b;pointer-events:none;background:#c4ef9b20}
 .detected-list{display:grid;gap:10px;margin:18px 0}.detected-list button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:14px}.detected-list small{font-size:11px;white-space:nowrap;color:inherit}
-:root:not([data-theme=light]) button.overlay.price.uncertain-price,:root:not([data-theme=light]) .detected-list button.possible-row,.detected-list button.possible-row{background:#f4dfab;color:#382f12;border-color:#f8e8c4}
 :root .detected-list button small{color:inherit}
 
 .update-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #a3bb92;border-radius:16px;margin-bottom:12px}.build-version{font-size:12px;opacity:.75}

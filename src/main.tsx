@@ -17,6 +17,11 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [exportNotice, setExportNotice] = useState('');
   const [copyFallback, setCopyFallback] = useState(false);
   const [reviewPrice, setReviewPrice] = useState('');
+  const [labelMeasure] = useState(() => {
+    const context = document.createElement('canvas').getContext('2d')!;
+    context.font = `750 16px ${getComputedStyle(document.documentElement).fontFamily}`;
+    return context;
+  });
   const [removed, setRemoved] = useState<Item | undefined>();
   const [foreignAmount, setForeignAmount] = useState('');
   const [currency, setCurrency] = useState<'PHP' | 'USD'>('PHP');
@@ -347,10 +352,10 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         const box = fill(track.box, source.w, source.h, view.w, view.h);
         if (!price || box.x + box.w < 0 || box.y + box.h < 0 || box.x > view.w || box.y > view.h) return null;
         if (tracks.length > 6) return <span key={track.id} className="detected-box" aria-hidden="true" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />;
-        const width = Math.min(156, view.w - 8);
+        const width = Math.min(Math.ceil(labelMeasure.measureText(price).width) + 18, view.w - 8);
         const left = Math.max(4, Math.min(view.w - width - 4, box.x + box.w / 2 - width / 2));
-        const top = Math.max(4, Math.min(view.h - 44, box.y));
-        return <button className={`overlay price${track.uncertain ? ' uncertain-price' : ''}`} key={track.id} style={{ width, left, top }} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}>{price}{track.uncertain && <small>Check ¥ price</small>}</button>;
+        const top = Math.max(4, Math.min(view.h - 34, box.y));
+        return <button className="overlay price" key={track.id} style={{ width, left, top }} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}>{price}</button>;
       })}
       {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
     </section>
@@ -366,7 +371,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     <span className="screen-reader-only" aria-live="polite">{notice}</span>
     <dialog ref={detected} className="sheet" aria-labelledby="detected-title">
       <div className="sheet-heading"><h2 id="detected-title">Detected prices</h2><button aria-label="Close detected prices" onClick={() => detected.current?.close()}>×</button></div>
-      <p>Check the printed price before adding. Amber results have an unclear currency symbol.</p>
+      <p>Check the printed price before adding. Uncertain prices ask for confirmation before adding.</p>
       <div className="detected-list">{tracks.map(track => <button key={track.id} className={track.uncertain ? 'possible-row' : ''} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}><strong>{track.text} → {display(track) ?? 'Check rate'}</strong><small>{track.uncertain ? 'Review price' : 'Add to shopping list'}</small></button>)}</div>
     </dialog>
     <dialog ref={review} className="sheet" aria-labelledby="review-title">
@@ -406,7 +411,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget</button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.05.2</p>
+      <p className="build-version">Scanner build 2026.11.05.3</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>

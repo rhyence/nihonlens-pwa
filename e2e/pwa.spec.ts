@@ -294,6 +294,12 @@ for (const frameWidth of [541, 1082]) test(`recognizes prices from the failing p
   await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
   await page.locator('.detected-button').click();
   console.log('Phone capture:', await page.locator('.detected-list').textContent());
+  await page.getByRole('button', { name: 'Close detected prices' }).click();
+  await page.screenshot({ path: `test-results/compact-prices-${frameWidth}.png` });
+  await page.locator('.overlay.price').first().click();
+  await expect(page.getByRole('dialog', { name: 'Check this price', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close price review', exact: true }).click();
+  await page.locator('.detected-button').click();
   for (const amount of ['480', '380']) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
 });
 
