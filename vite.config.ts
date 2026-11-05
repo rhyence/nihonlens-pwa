@@ -11,6 +11,6 @@ export default defineConfig({
       display: 'standalone', theme_color: '#101820', background_color: '#101820',
       icons: [192, 512].map(size => ({ src: '/icon-' + size + '.png', sizes: size + 'x' + size, type: 'image/png' })),
     },
-    workbox: { clientsClaim: true, runtimeCaching: [{ urlPattern: /\/__pack\//, handler: 'CacheOnly', options: { cacheName: packCache } }], globPatterns: ['**/*.{html,css,js,png,webmanifest}'], globIgnores: ['runtime/**'], navigateFallback: '/index.html', navigateFallbackDenylist: [/^\/__pack\//, /^\/runtime\//] },
+    workbox: { skipWaiting: true, clientsClaim: true, runtimeCaching: [{ urlPattern: /\/__pack\//, handler: 'CacheOnly', options: { cacheName: packCache } }], globPatterns: ['**/*.{html,css,js,png,webmanifest}'], globIgnores: ['runtime/**'], navigateFallback: '/index.html', navigateFallbackDenylist: [/^\/__pack\//, /^\/runtime\//] },
   })],
 });

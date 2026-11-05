@@ -169,3 +169,5 @@ main{padding-bottom:110px}
 .detected-list{display:grid;gap:10px;margin:18px 0}.detected-list button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:14px}.detected-list small{font-size:11px;white-space:nowrap;color:inherit}
 :root:not([data-theme=light]) button.overlay.price.uncertain-price,:root:not([data-theme=light]) .detected-list button.possible-row,.detected-list button.possible-row{background:#f4dfab;color:#382f12;border-color:#f8e8c4}
 :root .detected-list button small{color:inherit}
+
+.update-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #a3bb92;border-radius:16px;margin-bottom:12px}.build-version{font-size:12px;opacity:.75}

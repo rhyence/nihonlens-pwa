@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
 
 test.use({
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
@@ -258,4 +259,64 @@ test('reads a full menu and requires review before adding uncertain prices', asy
     for (const amount of expected) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
     await page.getByRole('button', { name: 'Close detected prices' }).click();
   }
+});
+
+for (const frameWidth of [541, 1082]) test(`recognizes prices from the failing phone capture at ${frameWidth}px`, async ({ page, context }) => {
+  const photo = process.env.NIHON_PHONE_IMAGE;
+  const fixture = process.env.NIHON_MODEL_DIR;
+  test.skip(!photo || !fixture, 'Requires the private phone capture and OCR model.');
+  await context.route('https://raw.githubusercontent.com/**/jpn.traineddata', route => route.fulfill({ path: join(fixture!, 'jpn.traineddata'), headers: { 'access-control-allow-origin': '*' } }));
+  await context.route('**/phone-regression.jpg', route => route.fulfill({ path: photo!, contentType: 'image/jpeg' }));
+  await page.addInitScript(frameWidth => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const image = new Image(); image.src = '/phone-regression.jpg'; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = frameWidth; canvas.height = Math.round(frameWidth * 410 / 541);
+      const paint = () => canvas.getContext('2d')!.drawImage(image, 25, 330, 541, 410, 0, 0, canvas.width, canvas.height);
+      const stream = canvas.captureStream(8); paint();
+      const timer = window.setInterval(paint, 100);
+      stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
+      return stream;
+    };
+  }, frameWidth);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Download scanner' }).click();
+  await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
+  await page.getByRole('button', { name: 'Close menu' }).click();
+  await expect(page.locator('.menu-sheet')).not.toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Start camera' }).click();
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  for (const amount of ['480', '380']) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
+  await page.getByRole('button', { name: 'Close detected prices' }).click();
+  await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  console.log('Phone capture:', await page.locator('.detected-list').textContent());
+  for (const amount of ['480', '380']) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
+});
+
+test('activates an update and keeps the shopping list through reload', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
+  });
+  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+  await page.getByRole('button', { name: '+ Add item', exact: true }).click();
+  await page.getByLabel('Item 1 yen price', { exact: true }).fill('480');
+  await page.getByRole('button', { name: 'Close shopping list', exact: true }).click();
+  const workerPath = join(process.cwd(), 'dist', 'sw.js');
+  const original = await readFile(workerPath, 'utf8');
+  try {
+    await writeFile(workerPath, original + '\n// update lifecycle regression\n');
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
+    await expect(page.getByRole('button', { name: 'Update now', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Update now', exact: true }).click();
+    await expect(page.locator('.cart-dock')).toContainText('1 item');
+    await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+    await expect(page.getByLabel('Item 1 yen price', { exact: true })).toHaveValue('480');
+    await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱192.00');
+  } finally { await writeFile(workerPath, original); }
 });

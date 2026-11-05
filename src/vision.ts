@@ -60,7 +60,7 @@ export function confusedYenCandidates(readings: Reading[]): Reading[] {
 // Units and damaged currency glyphs are ambiguous: these are review-only prices.
 export function possiblePriceCandidates(readings: Reading[]): Reading[] {
   const candidates = readings.flatMap(reading => {
-    const match = normalize(reading.text).match(/(?<![\dA-Za-z])(\d[\dOoUu]{1,5})\s*[mgnロ口囗](?:[a-z])?$/u);
+    const match = normalize(reading.text).match(/(?<![\d.,])(\d[\dOoUu]{1,5})\s*[a-zロ口囗]{1,2}$/u);
     if (!match) return [];
     return [{ ...reading, text: '¥' + match[1].replace(/[OoUu]/g, '0'), uncertain: true }];
   });

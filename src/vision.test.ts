@@ -115,3 +115,10 @@ it('marks aligned unit-like suffixes for review without accepting outliers or ba
   expect(candidates.every(row => row.uncertain)).toBe(true);
   expect(possiblePriceCandidates(rows.slice(0, 1))).toEqual([]);
 });
+
+it('recovers varied suffixes and attached size-label noise only as reviewed column candidates', () => {
+  const rows = ['き480m', 'ss380p'].map((text, i) => ({ text, confidence: 30, box: { x: 0.2, y: 0.4 + i * 0.1, w: 0.22, h: 0.08 } }));
+  expect(possiblePriceCandidates(rows).map(row => [row.text, row.uncertain])).toEqual([['¥480', true], ['¥380', true]]);
+  expect(possiblePriceCandidates(rows.map(row => ({ ...row, text: row.text.replace('380p', '380pg') }))).map(row => row.text)).toEqual(['¥480', '¥380']);
+  expect(possiblePriceCandidates(rows.slice(0, 1))).toEqual([]);
+});

@@ -13,6 +13,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [settings, setSettings] = useState(initialSettings);
   const [shopping, setShopping] = useState(loadShopping);
   const [notice, setNotice] = useState('');
+  const [updateReady, setUpdateReady] = useState(false);
   const [exportNotice, setExportNotice] = useState('');
   const [copyFallback, setCopyFallback] = useState(false);
   const [reviewPrice, setReviewPrice] = useState('');
@@ -62,6 +63,27 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     menuClosing.current = false;
     next?.();
   }
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    let controlled = !!navigator.serviceWorker.controller;
+    const changed = () => {
+      if (controlled) setUpdateReady(true);
+      controlled = true;
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', changed);
+    const check = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        void navigator.serviceWorker.getRegistration().then(registration => registration?.update()).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', check);
+    check();
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', changed);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, []);
 
   useEffect(() => {
     try { localStorage.setItem(shoppingKey, JSON.stringify(shopping)); }
@@ -310,6 +332,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   }
 
   return <main>
+    {updateReady && <div className="update-banner" role="status">Scanner update ready <button onClick={() => { stopCamera(); window.location.reload(); }}>Update now</button></div>}
     <header className="app-header compact-header"><span className="brand-mark" aria-label="NihonLens">¥</span><button className="menu-toggle" aria-label="Open menu" onClick={() => menu.current?.showModal()}>☰</button></header>
     <div className="currency-picker" role="group" aria-label="Display currency"><span>Convert prices to</span><div><button aria-pressed={currency === 'PHP'} onClick={() => { setCurrency('PHP'); setForeignAmount(''); }}>₱ PHP</button><button aria-pressed={currency === 'USD'} onClick={() => { setCurrency('USD'); setForeignAmount(''); }}>US$ USD</button></div></div>
     <div className="camera-card">
@@ -383,6 +406,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget</button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
+      <p className="build-version">Scanner build 2026.11.05.2</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>
