@@ -189,3 +189,73 @@ test('recognizes three menu prices in a real photo and adds the chosen price', a
   await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱232.00');
   await expect(page.getByLabel('Item 1 yen price', { exact: true })).toHaveValue('580');
 });
+
+test('reads a full menu and requires review before adding uncertain prices', async ({ page, context }) => {
+  const photo = process.env.NIHON_FULL_MENU_IMAGE;
+  const fixture = process.env.NIHON_MODEL_DIR;
+  test.skip(!photo || !fixture, 'Set NIHON_MENU_IMAGE and NIHON_MODEL_DIR for the private photo regression.');
+  await context.route('https://raw.githubusercontent.com/**/jpn.traineddata', route => route.fulfill({ path: join(fixture!, 'jpn.traineddata'), headers: { 'access-control-allow-origin': '*' } }));
+  await context.route('**/menu-regression.jpg', route => route.fulfill({ path: photo!, contentType: 'image/jpeg' }));
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const image = new Image(); image.src = '/menu-regression.jpg'; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+      const paint = () => {
+        const ctx = canvas.getContext('2d')!;
+        const zoom = document.documentElement.dataset.menuZoom;
+        if (zoom === 'beef') ctx.drawImage(image, 15, 115, 100, 124, 0, 0, canvas.width, canvas.height);
+        else if (zoom === 'karubi') ctx.drawImage(image, 335, 315, 90, 112, 0, 0, canvas.width, canvas.height);
+        else ctx.drawImage(image, 0, 0);
+      };
+      const stream = canvas.captureStream(8); paint();
+      const timer = window.setInterval(paint, 100);
+      stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
+      return stream;
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Download scanner' }).click();
+  await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
+  await page.getByRole('button', { name: 'Close menu' }).click();
+  await expect(page.locator('.menu-sheet')).not.toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Start camera' }).click();
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  console.log('Live full-menu candidates:', await page.locator('.detected-list button').allTextContents());
+  expect(await page.locator('.detected-list button').count()).toBeGreaterThanOrEqual(6);
+  await page.getByRole('button', { name: 'Close detected prices' }).click();
+  await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  await expect(page.getByRole('button', { name: 'Review possible ¥280 price', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Review possible ¥640 price', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review possible ¥580 price', exact: true })).toBeVisible();
+  console.log('Full-menu prices:', await page.locator('.detected-list button').allTextContents());
+  await page.getByRole('dialog', { name: 'Detected prices', exact: true }).evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+  await page.screenshot({ path: 'test-results/full-menu-overlays.png' });
+  await page.getByRole('button', { name: 'Review possible ¥280 price', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Check this price' })).toBeVisible();
+  await expect(page.locator('.cart-dock')).toContainText('0 items');
+  await page.getByLabel('Price in yen', { exact: true }).fill('300');
+  await page.getByRole('button', { name: 'Confirm and add' }).click();
+  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+  await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱120.00');
+  await page.getByRole('button', { name: 'Close shopping list' }).click();
+  for (const zoom of ['beef', 'karubi']) {
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await page.evaluate(async zoom => {
+      document.documentElement.dataset.menuZoom = zoom;
+      const video = document.querySelector('video')!;
+      await new Promise<void>(resolve => video.requestVideoFrameCallback(() => video.requestVideoFrameCallback(() => resolve())));
+    }, zoom);
+    await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+    await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+    await page.locator('.detected-button').click();
+    console.log(zoom + ' zoom results:', await page.locator('.detected-list button').allTextContents());
+    const expected = zoom === 'beef' ? ['280', '380', '440', '540'] : ['480', '580', '380'];
+    for (const amount of expected) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
+    await page.getByRole('button', { name: 'Close detected prices' }).click();
+  }
+});

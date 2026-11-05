@@ -162,3 +162,10 @@ main{padding-bottom:110px}
 .camera-progress{position:absolute;bottom:10px;left:12px;right:12px;z-index:1;background:#10251fe6;border-radius:10px;min-height:0;padding:8px 12px;pointer-events:none}
 .scan-shortcuts{margin-top:24px}
 .screen-reader-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.overlay.price small{display:block;font-size:9px;font-weight:500;color:inherit;line-height:1.1;margin-top:3px}
+:root:not([data-theme=light]) button.uncertain-price,button.uncertain-price{background:#f4dfab;color:#382f12;border-color:#f8e8c4}
+.detected-button{position:absolute;right:10px;top:12px;z-index:4;font-size:11px;padding:6px 10px;min-height:44px}
+.detected-box{position:absolute;z-index:2;border:1px solid #f4dfab;pointer-events:none;background:#f4dfab20}
+.detected-list{display:grid;gap:10px;margin:18px 0}.detected-list button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:14px}.detected-list small{font-size:11px;white-space:nowrap;color:inherit}
+:root:not([data-theme=light]) button.overlay.price.uncertain-price,:root:not([data-theme=light]) .detected-list button.possible-row,.detected-list button.possible-row{background:#f4dfab;color:#382f12;border-color:#f8e8c4}
+:root .detected-list button small{color:inherit}

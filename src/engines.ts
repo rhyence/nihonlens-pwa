@@ -1,6 +1,6 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
 import { packCache, packPath } from './pack-info';
-import { confusedYenCandidates, normalize, yen, yenReadings, type Reading } from './vision';
+import { confusedYenCandidates, possiblePriceCandidates, normalize, yen, yenReadings, type Reading } from './vision';
 import { enhance } from './image';
 
 function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
@@ -54,30 +54,35 @@ export class Engines {
         const normalized = normalize(text);
         if (!normalized || !(x1 > x0 && y1 > y0)) return [];
         return [{ text: normalized, confidence, box: { x: x0 / width, y: y0 / height, w: (x1 - x0) / width, h: (y1 - y0) / height } }];
-      }).slice(0, 30);
+      }).filter(reading => /\d/.test(reading.text)).slice(0, 120);
     };
 
     const lines = await recognize(PSM.SPARSE_TEXT);
     const recovered: Reading[] = [];
-    const candidates = confusedYenCandidates(lines).slice(0, 6);
+    const confident = confusedYenCandidates(lines);
+    const candidates = [...confident, ...possiblePriceCandidates(lines).filter(candidate =>
+      !confident.some(other => other.box === candidate.box))].slice(0, 24);
     if (candidates.length) {
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE, tessedit_char_whitelist: '0123456789,¥￥円' });
       for (const candidate of candidates) {
         const box = candidate.box;
-        const padding = Math.max(4, box.h * height * 0.15);
+        const padding = Math.max(2, box.h * height * 0.1);
         const x = Math.max(0, Math.floor(box.x * width - padding));
         const y = Math.max(0, Math.floor(box.y * height - padding));
         const w = Math.min(width - x, Math.ceil(box.w * width + padding * 2));
         const h = Math.min(height - y, Math.ceil(box.h * height + padding * 2));
-        const zoom = Math.min(3, 1024 / w, 256 / h);
-        const crop = document.createElement('canvas');
-        crop.width = Math.max(1, Math.round(w * zoom));
-        crop.height = Math.max(1, Math.round(h * zoom));
-        crop.getContext('2d')!.drawImage(canvas, x, y, w, h, 0, 0, crop.width, crop.height);
-        const { data } = await deadline(worker.recognize(crop), 'Price verification timed out.');
-        const confirmed = normalize(data.text).replace(/[¥￥円,\s]/g, '');
-        // A second, enlarged read must independently agree on all digits.
-        if (/^\d+$/.test(confirmed) && BigInt(confirmed) === yen(candidate.text)) recovered.push(candidate);
+        // Normalize overly magnified digits as well as small text.
+        for (const targetHeight of [60, 40, 160]) {
+          const zoom = Math.min(3, 1024 / w, targetHeight / h);
+          const crop = document.createElement('canvas');
+          crop.width = Math.max(1, Math.round(w * zoom));
+          crop.height = Math.max(1, Math.round(h * zoom));
+          crop.getContext('2d')!.drawImage(canvas, x, y, w, h, 0, 0, crop.width, crop.height);
+          const { data } = await deadline(worker.recognize(crop), 'Price verification timed out.');
+          const confirmed = normalize(data.text).replace(/[¥￥円,\s]/g, '');
+          // An independent numeric read must agree on every digit before display.
+          if (/^\d+$/.test(confirmed) && BigInt(confirmed) === yen(candidate.text)) { recovered.push(candidate); break; }
+        }
       }
     }
     return [...lines, ...recovered].map(reading => ({ ...reading, box: map(reading.box) }));

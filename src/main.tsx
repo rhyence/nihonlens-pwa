@@ -15,6 +15,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const [notice, setNotice] = useState('');
   const [exportNotice, setExportNotice] = useState('');
   const [copyFallback, setCopyFallback] = useState(false);
+  const [reviewPrice, setReviewPrice] = useState('');
   const [removed, setRemoved] = useState<Item | undefined>();
   const [foreignAmount, setForeignAmount] = useState('');
   const [currency, setCurrency] = useState<'PHP' | 'USD'>('PHP');
@@ -37,6 +38,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
   const premium = useRef<HTMLDialogElement>(null);
   const menu = useRef<HTMLDialogElement>(null);
   const cart = useRef<HTMLDialogElement>(null);
+  const review = useRef<HTMLDialogElement>(null);
+  const detected = useRef<HTMLDialogElement>(null);
   const converter = useRef<HTMLDialogElement>(null);
   const menuClosing = useRef(false);
   const still = useRef<HTMLCanvasElement>(null);
@@ -221,6 +224,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
           }, readings => {
             completed = readings.length > 0 || attempt === scanAngles.length - 1;
             if (!readings.length) attempt = frozen && attempt === 0 ? 2 : (attempt + 1) % scanAngles.length;
+            else if (!frozen && attempt === 0 && readings.some(reading => reading.uncertain)) attempt = 1;
             setSource({ w, h });
             setTracks(tracker.current.update(readings, performance.now(), 1));
             setScanning(false);
@@ -297,6 +301,14 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     return amount === undefined || !validRate ? undefined : convert(amount, rate, currency)?.replace(currency + ' ', symbol);
   }
 
+  function choosePrice(track: Track) {
+    const amount = yen(track.text);
+    if (amount === undefined) return;
+    detected.current?.close();
+    if (track.uncertain) { setReviewPrice(String(amount)); review.current?.showModal(); }
+    else addItem(String(amount));
+  }
+
   return <main>
     <header className="app-header compact-header"><span className="brand-mark" aria-label="NihonLens">¥</span><button className="menu-toggle" aria-label="Open menu" onClick={() => menu.current?.showModal()}>☰</button></header>
     <div className="currency-picker" role="group" aria-label="Display currency"><span>Convert prices to</span><div><button aria-pressed={currency === 'PHP'} onClick={() => { setCurrency('PHP'); setForeignAmount(''); }}>₱ PHP</button><button aria-pressed={currency === 'USD'} onClick={() => { setCurrency('USD'); setForeignAmount(''); }}>US$ USD</button></div></div>
@@ -305,15 +317,17 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <video ref={video} muted playsInline />
       <canvas ref={still} className="frozen-preview" style={{ display: frozen ? 'block' : 'none', objectFit: 'cover' }} aria-label="Frozen camera frame" />
       <div className="camera-badge"><span className={camera && !frozen ? 'live-dot' : ''} />{frozen ? 'FROZEN FRAME' : camera ? 'LIVE CAMERA' : 'PRICE SCANNER'}</div>
+      {camera && tracks.length > 0 && <button className="detected-button" onClick={() => detected.current?.showModal()}>View {tracks.length} prices</button>}
       {!camera && <div className="hint"><div className="viewfinder" aria-hidden="true">¥</div><h3>A little clarity on every price.</h3><p>Point at ¥500 or 500円.<br />See what it costs in {currencyName.toLowerCase()}.</p><span className="privacy-note">Private · On your device</span></div>}
       {camera && view.w > 8 && source.w > 0 && tracks.map(track => {
         const price = display(track);
         const box = fill(track.box, source.w, source.h, view.w, view.h);
         if (!price || box.x + box.w < 0 || box.y + box.h < 0 || box.x > view.w || box.y > view.h) return null;
+        if (tracks.length > 6) return <span key={track.id} className="detected-box" aria-hidden="true" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />;
         const width = Math.min(156, view.w - 8);
         const left = Math.max(4, Math.min(view.w - width - 4, box.x + box.w / 2 - width / 2));
         const top = Math.max(4, Math.min(view.h - 44, box.y));
-        return <button className="overlay price" key={track.id} style={{ width, left, top }} aria-label={`Add ${track.text} to shopping list`} onClick={() => { const amount = yen(track.text); if (amount !== undefined) addItem(String(amount)); }}>{price}</button>;
+        return <button className={`overlay price${track.uncertain ? ' uncertain-price' : ''}`} key={track.id} style={{ width, left, top }} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}>{price}{track.uncertain && <small>Check ¥ price</small>}</button>;
       })}
       {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
     </section>
@@ -327,6 +341,17 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </div>
     <div className="scan-shortcuts"><button onClick={() => converter.current?.showModal()}>Quick converter</button>{!ready && <button onClick={() => menu.current?.showModal()}>Set up scanner</button>}</div>
     <span className="screen-reader-only" aria-live="polite">{notice}</span>
+    <dialog ref={detected} className="sheet" aria-labelledby="detected-title">
+      <div className="sheet-heading"><h2 id="detected-title">Detected prices</h2><button aria-label="Close detected prices" onClick={() => detected.current?.close()}>×</button></div>
+      <p>Check the printed price before adding. Amber results have an unclear currency symbol.</p>
+      <div className="detected-list">{tracks.map(track => <button key={track.id} className={track.uncertain ? 'possible-row' : ''} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}><strong>{track.text} → {display(track) ?? 'Check rate'}</strong><small>{track.uncertain ? 'Review price' : 'Add to shopping list'}</small></button>)}</div>
+    </dialog>
+    <dialog ref={review} className="sheet" aria-labelledby="review-title">
+      <div className="sheet-heading"><h2 id="review-title">Check this price</h2><button aria-label="Close price review" onClick={() => review.current?.close()}>×</button></div>
+      <p>The currency symbol was unclear. Confirm this is a yen price, then correct the number if needed.</p>
+      <label className="amount-label">Price in yen<span className="amount-field"><span aria-hidden="true">¥</span><input aria-label="Price in yen" inputMode="numeric" maxLength={12} value={reviewPrice} onChange={event => setReviewPrice(event.target.value)} /></span></label>
+      <button className="primary" disabled={!/^\d{1,12}$/.test(reviewPrice)} onClick={() => { addItem(reviewPrice); review.current?.close(); }}>Confirm and add</button>
+    </dialog>
     <dialog ref={converter} className="sheet" aria-labelledby="converter-title">
       <div className="sheet-heading"><h2 id="converter-title">Quick converter</h2><button aria-label="Close converter" onClick={() => converter.current?.close()}>×</button></div>
     <section className="panel converter" aria-label="Manual converter">

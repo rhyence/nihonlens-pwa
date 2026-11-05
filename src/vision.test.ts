@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { confusedYenCandidates, convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings } from './vision';
+import { confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, yen, yenReadings } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -106,4 +106,12 @@ it('offers ambiguous yen glyphs for confirmation only in a confident aligned pri
   expect(confusedYenCandidates(rows.map(row => ({ ...row, text: '480g' })))).toEqual([]);
   expect(confusedYenCandidates(rows.map(row => ({ ...row, text: '480' })))).toEqual([]);
   expect(confusedYenCandidates(rows.map((row, i) => ({ ...row, box: { ...row.box, x: i * 0.4 } })))).toEqual([]);
+});
+
+it('marks aligned unit-like suffixes for review without accepting outliers or bare numbers', () => {
+  const rows = ['280m', '380m', '440m', '5480g', '40m', '580'].map((text, i) => ({ text, box: { x: 0.1, y: 0.1 + i * 0.03, w: 0.08, h: 0.025 } }));
+  const candidates = possiblePriceCandidates(rows);
+  expect(candidates.map(row => row.text)).toEqual(['¥280', '¥380', '¥440']);
+  expect(candidates.every(row => row.uncertain)).toBe(true);
+  expect(possiblePriceCandidates(rows.slice(0, 1))).toEqual([]);
 });

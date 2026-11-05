@@ -1,5 +1,5 @@
 export type Box = { x: number; y: number; w: number; h: number };
-export type Reading = { text: string; box: Box; confidence?: number };
+export type Reading = { text: string; box: Box; confidence?: number; uncertain?: boolean };
 export type Track = Reading & { id: number; seen: number; hits: number };
 export function normalize(text: string) {
   return text.normalize('NFKC').replace(/\s+/g, ' ').trim();
@@ -55,6 +55,20 @@ export function confusedYenCandidates(readings: Reading[]): Reading[] {
       Math.abs((a.x + a.w / 2) - (b.x + b.w / 2)) < Math.max(a.w, b.w) * 0.75 &&
       Math.max(a.h, b.h) < Math.min(a.h, b.h) * 2.8;
   }));
+}
+
+// Units and damaged currency glyphs are ambiguous: these are review-only prices.
+export function possiblePriceCandidates(readings: Reading[]): Reading[] {
+  const candidates = readings.flatMap(reading => {
+    const match = normalize(reading.text).match(/(?<![\dA-Za-z])(\d[\dOoUu]{1,5})\s*[mgnロ口囗](?:[a-z])?$/u);
+    if (!match) return [];
+    return [{ ...reading, text: '¥' + match[1].replace(/[OoUu]/g, '0'), uncertain: true }];
+  });
+  return candidates.filter(a => candidates.some(b => a !== b && a.text.length === b.text.length &&
+    Math.abs(a.box.x + a.box.w / 2 - b.box.x - b.box.w / 2) < Math.max(a.box.w, b.box.w) * 0.8 &&
+    Math.abs(a.box.y - b.box.y) > Math.min(a.box.h, b.box.h) * 0.6 &&
+    Math.abs(a.box.y - b.box.y) < Math.max(a.box.h, b.box.h) * 10 &&
+    Math.max(a.box.h, b.box.h) < Math.min(a.box.h, b.box.h) * 2.8));
 }
 
 export function pesosToYen(amount: string, rate: string) {
