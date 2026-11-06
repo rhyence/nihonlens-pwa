@@ -21,7 +21,7 @@ button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid
 .section-heading{margin-bottom:12px}
 .section-heading>span{color:#6a7a70;font-size:12px}
 .camera-card{background:#142923;border-radius:24px;overflow:hidden;margin-bottom:20px;box-shadow:0 8px 26px #213c3212}
-.view{width:100%;height:clamp(340px,65svh,660px);position:relative;overflow:hidden;background:radial-gradient(ellipse at center,#243f34,#10251f);display:grid;place-items:center}
+.view{width:100%;height:clamp(360px,calc(100svh - 170px),900px);position:relative;overflow:hidden;background:radial-gradient(ellipse at center,#243f34,#10251f);display:grid;place-items:center}
 video,.frozen-preview{width:100%;height:100%;position:absolute;inset:0;object-fit:cover}
 .camera-badge{position:absolute;top:18px;left:18px;z-index:3;display:flex;align-items:center;gap:7px;background:#10251fe6;color:#e8f2e8;border:1px solid #ffffff20;border-radius:30px;padding:7px 11px;font-size:10px;letter-spacing:1.4px;font-weight:650;pointer-events:none}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#c4ef9b}
@@ -62,7 +62,6 @@ li{padding:6px 0;font-variant-numeric:tabular-nums}
 [role=alert]{background:#fff0eb;color:#923e29;padding:14px;border-radius:12px;font-size:13px;overflow-wrap:anywhere}
 footer{text-align:center;font-size:11px;color:#7b887a;padding:14px 0}
 @media(min-width:700px){main{padding-top:30px}
-.view{height:620px}
 .app-header{margin-bottom:32px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}
@@ -134,9 +133,7 @@ footer{text-align:center;font-size:11px;color:#7b887a;padding:14px 0}
 :root:not([data-theme=light]) .over-budget{color:#ffb5a6}
 :root:not([data-theme=light]) .empty-cart{color:#acc0a5}
 @media(max-width:600px){.sheet{margin:auto auto 0;width:100%;max-height:88dvh;border-radius:24px 24px 0 0;padding-bottom:max(24px,env(safe-area-inset-bottom))}}
-.view{height:clamp(260px,calc(100svh - 370px),620px)}
 .sheet-heading{position:sticky;top:0;z-index:2;background:inherit;padding:8px 0}
-@media(min-width:700px){.view{height:620px}}
 .compact-header{margin-bottom:12px}
 .theme-toggle{font-size:21px;min-width:44px;padding:6px 10px}
 .sheet.menu-sheet{inset:0 0 0 auto;margin:0;width:min(88vw,400px);height:100dvh;max-height:100dvh;border-radius:22px 0 0 22px;padding:20px 18px max(24px,env(safe-area-inset-bottom))}

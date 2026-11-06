@@ -435,7 +435,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button aria-label="Open shopping list" onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget <span className="shopping-count">{shopping.items.length} {shopping.items.length === 1 ? 'item' : 'items'}</span></button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.06.2</p>
+      <p className="build-version">Scanner build 2026.11.06.3</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>
