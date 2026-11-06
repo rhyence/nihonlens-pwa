@@ -29,8 +29,6 @@ video,.frozen-preview{width:100%;height:100%;position:absolute;inset:0;object-fi
 .hint p{font-size:14px;color:#acc0b3;margin-top:10px;line-height:1.7}
 .viewfinder{width:94px;height:94px;display:grid;place-items:center;border:1px solid #83ac8c;border-radius:24px;margin:0 auto 25px;font-size:44px;color:#c4ef9b}
 .privacy-note{display:block;font-size:11px;letter-spacing:.5px;color:#98b1a1;margin-top:30px}
-.camera-controls{display:flex;gap:10px;padding:14px 16px 0}
-.camera-controls button{flex:1}
 .primary{background:#c4ef9b;color:#173b25;border-color:#c4ef9b}
 .primary:hover{background:#d7f6bd}
 .secondary{background:#ffffff0a;color:#e4eee3;border-color:#ffffff30}
@@ -112,7 +110,6 @@ footer{text-align:center;font-size:11px;color:#7b887a;padding:14px 0}
 :root:not([data-theme=light]) .currency-picker button{background:transparent}
 :root:not([data-theme=light]) .currency-picker button[aria-pressed=true]{background:#c4ef9b;color:#173b25}
 .settings a{color:inherit;text-decoration:underline}
-main{padding-bottom:110px}
 .menu-toggle{font-size:24px;min-width:48px;padding:4px 10px}
 .scan-shortcuts{display:flex;gap:10px}.scan-shortcuts button{flex:1;font-size:13px}
 .cart-notice{font-size:12px;color:#657864;margin:10px 0;min-height:20px}
@@ -124,8 +121,6 @@ main{padding-bottom:110px}
 .sheet-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.sheet-heading h2{font-size:22px}.sheet-heading>button{font-size:26px;min-width:44px;padding:0;border:0;background:transparent}
 .sheet .converter{padding:0;background:transparent;border:0;margin:0}.sheet .converter>.section-heading{display:none}.sheet .converter>.primary{width:100%;margin-top:14px}
 .menu-links{display:grid;gap:10px;margin-bottom:20px}.menu-links button{text-align:left}.theme-setting{display:flex;align-items:center;justify-content:space-between;font-size:14px;margin:12px 0}
-.cart-dock{position:fixed;z-index:5;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(calc(100% - 24px),704px);display:flex;align-items:center;justify-content:space-between;gap:14px;text-align:left;padding:14px 18px;box-shadow:0 6px 30px #0003;background:#203f35;color:#eef9e6;border:1px solid #5d795c;border-radius:18px;font-size:13px}
-.cart-dock small{display:block;font-size:10px;color:#c5d6bb;margin-top:3px}.cart-dock strong{font-size:18px;color:#c4ef9b;overflow-wrap:anywhere;text-align:right}.cart-dock>span{min-width:0}
 .budget-card{padding:18px;background:#e7f0e1;border-radius:16px;margin-bottom:20px}.cart-total{display:grid;gap:5px;margin-bottom:18px}.cart-total>span{font-size:12px}.cart-total strong{font-size:30px;letter-spacing:-.8px;overflow-wrap:anywhere}
 .budget-card label,.cart-item label{display:grid;gap:5px;font-size:12px}.budget-card input,.cart-item input{min-width:0;width:100%;padding:10px 12px;border:1px solid #c9d7c2;border-radius:10px;background:#fff;color:#213d2c;font-size:16px}
 .budget-card>small{display:block;margin-top:10px}.budget-remaining{color:#275d2d;font-weight:700;margin:12px 0}.over-budget{color:#a23928;font-weight:700;margin:12px 0}
@@ -158,13 +153,22 @@ main{padding-bottom:110px}
 @media(prefers-reduced-motion:reduce){.sheet[open],.sheet[open]::backdrop{animation:none}}
 @media(prefers-reduced-motion:reduce){.sheet.menu-sheet[open]{animation:none}}
 
-.camera-controls{padding-bottom:14px}
-.camera-progress{position:absolute;bottom:10px;left:12px;right:12px;z-index:1;background:#10251fe6;border-radius:10px;min-height:0;padding:8px 12px;pointer-events:none}
+.camera-progress{position:absolute;bottom:94px;left:12px;right:12px;z-index:1;background:#10251fe6;border-radius:10px;min-height:0;padding:8px 12px;pointer-events:none}
 .scan-shortcuts{margin-top:24px}
 .screen-reader-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.detected-button{position:absolute;right:10px;top:12px;z-index:4;font-size:11px;padding:6px 10px;min-height:44px}
+.detected-button{position:absolute;right:64px;top:12px;z-index:4;font-size:11px;padding:6px 10px;min-height:44px}
 .detected-box{position:absolute;z-index:2;border:1px solid #c4ef9b;pointer-events:none;background:#c4ef9b20}
 .detected-list{display:grid;gap:10px;margin:18px 0}.detected-list button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:14px}.detected-list small{font-size:11px;white-space:nowrap;color:inherit}
 :root .detected-list button small{color:inherit}
 
 .update-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #a3bb92;border-radius:16px;margin-bottom:12px}.build-version{font-size:12px;opacity:.75}
+
+:root button.camera-start{position:relative;z-index:3;display:grid;place-items:center;width:104px;height:104px;padding:0;border:1px solid #d7f6bd;border-radius:50%;background:#c4ef9b;color:#173b25;box-shadow:0 8px 32px #0003;transition:transform .15s,background .15s}
+:root button.camera-start:hover{background:#d7f6bd;transform:scale(1.04)}
+:root button.camera-stop{position:absolute;right:10px;top:12px;z-index:5;width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;font-size:28px;line-height:1;background:#10251fe6;color:#e8f2e8;border:1px solid #ffffff30}
+.shutter-bar{position:absolute;bottom:0;left:0;right:0;height:90px;display:flex;align-items:center;justify-content:center;z-index:4;pointer-events:none;background:linear-gradient(transparent,#071c1499)}
+:root button.camera-shutter{position:relative;display:grid;place-items:center;width:68px;height:68px;min-height:0;padding:0;border:4px solid #f3f9ec;border-radius:50%;background:#f3f9ec;color:#173b25;box-shadow:inset 0 0 0 4px #183a2d;pointer-events:auto;touch-action:manipulation;transition:transform .15s,background .15s}
+:root button.camera-shutter.is-frozen{background:#c4ef9b;border-color:#c4ef9b}
+:root button.camera-shutter:active{transform:scale(.93)}
+.shopping-count{display:block;font-size:12px;opacity:.75;margin-top:3px}
+@media(prefers-reduced-motion:reduce){:root button.camera-start,:root button.camera-shutter{transition:none}}

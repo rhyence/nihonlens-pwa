@@ -1,6 +1,12 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
+
+async function openShoppingList(page: Page) {
+  if (await page.getByRole('dialog', { name: 'Shopping list', exact: true }).isVisible()) return;
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+}
 
 test.use({
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
@@ -97,13 +103,19 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
     return (await (await caches.open(name)).keys()).some(key => key.url.includes('/marian/'));
   });
   expect(retiredAssets).toBe(false);
+  await expect(page.getByRole('button', { name: 'Freeze', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Shopping list', exact: true })).not.toBeVisible();
+  await page.screenshot({ path: 'test-results/camera-idle.png' });
   await page.getByRole('button', { name: 'Start camera' }).click();
+  await page.screenshot({ path: 'test-results/camera-shutter.png' });
   await page.getByRole('button', { name: 'Freeze', exact: true }).click();
   await expect(page.getByLabel('Frozen camera frame')).toBeVisible();
   await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
   await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
+  await page.screenshot({ path: 'test-results/camera-frozen.png' });
   await page.locator('.overlay').click();
-  await page.getByRole('button', { name: 'Open shopping list' }).click();
+  await expect(page.getByRole('dialog', { name: 'Shopping list', exact: true })).toBeVisible();
+  await openShoppingList(page);
   await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱512.00');
   await page.getByLabel('Budget in PHP', { exact: true }).fill('1000');
   await expect(page.getByText('Remaining: ₱488.00', { exact: true })).toBeVisible();
@@ -186,7 +198,7 @@ test('recognizes three menu prices in a real photo and adds the chosen price', a
   await page.getByRole('button', { name: 'Freeze', exact: true }).click();
   await expect(page.locator('.overlay')).toHaveText(['₱192.00', '₱232.00', '₱152.00'], { timeout: 30_000 });
   await page.getByRole('button', { name: 'Add ¥580 to shopping list', exact: true }).click();
-  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+  await openShoppingList(page);
   await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱232.00');
   await expect(page.getByLabel('Item 1 yen price', { exact: true })).toHaveValue('580');
 });
@@ -241,10 +253,10 @@ test('reads a full menu and requires review before adding uncertain prices', asy
   await page.screenshot({ path: 'test-results/full-menu-overlays.png' });
   await page.getByRole('button', { name: 'Review possible ¥280 price', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Check this price' })).toBeVisible();
-  await expect(page.locator('.cart-dock')).toContainText('0 items');
+  await expect(page.locator('.shopping-count')).toContainText('0 items');
   await page.getByLabel('Price in yen', { exact: true }).fill('300');
   await page.getByRole('button', { name: 'Confirm and add' }).click();
-  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+  await openShoppingList(page);
   await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱120.00');
   await page.getByRole('button', { name: 'Close shopping list' }).click();
   for (const zoom of ['beef', 'karubi']) {
@@ -312,7 +324,7 @@ test('activates an update and keeps the shopping list through reload', async ({ 
     await navigator.serviceWorker.ready;
     if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
   });
-  await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+  await openShoppingList(page);
   await page.getByRole('button', { name: '+ Add item', exact: true }).click();
   await page.getByLabel('Item 1 yen price', { exact: true }).fill('480');
   await page.getByRole('button', { name: 'Close shopping list', exact: true }).click();
@@ -323,8 +335,8 @@ test('activates an update and keeps the shopping list through reload', async ({ 
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
     await expect(page.getByRole('button', { name: 'Update now', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Update now', exact: true }).click();
-    await expect(page.locator('.cart-dock')).toContainText('1 item');
-    await page.getByRole('button', { name: 'Open shopping list', exact: true }).click();
+    await expect(page.locator('.shopping-count')).toContainText('1 item');
+    await openShoppingList(page);
     await expect(page.getByLabel('Item 1 yen price', { exact: true })).toHaveValue('480');
     await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱192.00');
   } finally { await writeFile(workerPath, original); }

@@ -103,6 +103,15 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     const item = { id: crypto.randomUUID(), name: `Item ${shopping.items.length + 1}`, price, quantity: '1' };
     setShopping(previous => ({ ...previous, items: [...previous.items, item] }));
     setNotice(`Added ¥${BigInt(price).toLocaleString('en-US')} to your list.`);
+    return true;
+  }
+
+  function addAndOpenList(price: string) {
+    if (!addItem(price)) return;
+    review.current?.close();
+    converter.current?.close();
+    detected.current?.close();
+    cart.current?.showModal();
   }
 
   function editItem(id: string, changes: Partial<Item>) {
@@ -341,7 +350,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     if (amount === undefined) return;
     detected.current?.close();
     if (track.uncertain) { setReviewPrice(String(amount)); review.current?.showModal(); }
-    else addItem(String(amount));
+    else addAndOpenList(String(amount));
   }
 
   const placedLabels: Box[] = [];
@@ -355,7 +364,15 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <canvas ref={still} className="frozen-preview" style={{ display: frozen ? 'block' : 'none', objectFit: 'cover' }} aria-label="Frozen camera frame" />
       <div className="camera-badge"><span className={camera && !frozen ? 'live-dot' : ''} />{frozen ? 'FROZEN FRAME' : camera ? 'LIVE CAMERA' : 'PRICE SCANNER'}</div>
       {camera && tracks.length > 0 && <button className="detected-button" onClick={() => detected.current?.showModal()}>View {tracks.length} prices</button>}
-      {!camera && <div className="hint"><div className="viewfinder" aria-hidden="true">¥</div><h3>A little clarity on every price.</h3><p>Point at ¥500 or 500円.<br />See what it costs in {currencyName.toLowerCase()}.</p><span className="privacy-note">Private · On your device</span></div>}
+      {!camera && <button className="camera-start" aria-label={ready ? 'Start camera' : 'Set up camera'} title={ready ? 'Start camera' : 'Set up camera'} disabled={starting || busy} onClick={() => ready ? void startCamera() : menu.current?.showModal()}>
+        <svg viewBox="0 0 32 32" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M11 7l2-3h6l2 3h6a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="16" cy="17" r="6"/></svg>
+      </button>}
+      {camera && <>
+        <button className="camera-stop" aria-label="Stop camera" title="Stop camera" onClick={stopCamera}>×</button>
+        <div className="shutter-bar"><button className={`camera-shutter${frozen ? ' is-frozen' : ''}`} aria-label={frozen ? 'Resume' : 'Freeze'} title={frozen ? 'Resume scanning' : 'Freeze frame'} onClick={toggleFreeze}>
+          {frozen && <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M8 4v16l12-8z"/></svg>}
+        </button></div>
+      </>}
       {camera && view.w > 8 && source.w > 0 && [...tracks].sort((a, b) => a.box.y - b.box.y).map(track => {
         const price = display(track);
         const box = fill(track.box, source.w, source.h, view.w, view.h);
@@ -363,7 +380,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         if (tracks.length > 6) return <span key={track.id} className="detected-box" aria-hidden="true" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />;
         const width = Math.min(Math.ceil(labelMeasure.measureText(price).width) + 18, view.w - 8);
         const left = Math.max(4, Math.min(view.w - width - 4, box.x + box.w / 2 - width / 2));
-        const placement = placeLabel({ x: left, y: box.y, w: width, h: 34 }, placedLabels, view.h);
+        const placement = placeLabel({ x: left, y: box.y, w: width, h: 34 }, placedLabels, view.h - 112);
         if (!placement) return null;
         placedLabels.push(placement);
         const top = placement.y;
@@ -371,12 +388,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       })}
       {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === scanAngles.length ? 'Checking each price row… You can put your phone down.' : scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
     </section>
-    <div className="camera-controls">
-      <button className={camera ? 'secondary' : 'primary'} disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
-        {camera ? 'Stop camera' : starting ? 'Starting…' : 'Start camera'}
-      </button>
-      {camera && <button className="primary" onClick={toggleFreeze}>{frozen ? 'Resume' : 'Freeze'}</button>}
-    </div>
+
 
     </div>
     <div className="scan-shortcuts"><button onClick={() => converter.current?.showModal()}>Quick converter</button>{!ready && <button onClick={() => menu.current?.showModal()}>Set up scanner</button>}</div>
@@ -390,7 +402,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <div className="sheet-heading"><h2 id="review-title">Check this price</h2><button aria-label="Close price review" onClick={() => review.current?.close()}>×</button></div>
       <p>Confirm this number is a yen price, then correct it if needed. The scanner could not reliably read the currency symbol.</p>
       <label className="amount-label">Price in yen<span className="amount-field"><span aria-hidden="true">¥</span><input aria-label="Price in yen" inputMode="numeric" maxLength={12} value={reviewPrice} onChange={event => setReviewPrice(event.target.value)} /></span></label>
-      <button className="primary" disabled={!/^\d{1,12}$/.test(reviewPrice)} onClick={() => { addItem(reviewPrice); review.current?.close(); }}>Confirm and add</button>
+      <button className="primary" disabled={!/^\d{1,12}$/.test(reviewPrice)} onClick={() => addAndOpenList(reviewPrice)}>Confirm and add</button>
     </dialog>
     <dialog ref={converter} className="sheet" aria-labelledby="converter-title">
       <div className="sheet-heading"><h2 id="converter-title">Quick converter</h2><button aria-label="Close converter" onClick={() => converter.current?.close()}>×</button></div>
@@ -402,7 +414,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       <div className="conversion-result"><span>In {currencyLabel}</span><output aria-label={currency === 'PHP' ? 'Amount in pesos' : 'Amount in dollars'} aria-live="polite">{manualPesos ?? symbol + '—'}</output></div></> : <><label className="amount-label">Amount in {currency} <span className="amount-field"><span aria-hidden="true">{symbol}</span><input inputMode="decimal" maxLength={15} value={foreignAmount} onChange={event => setForeignAmount(event.target.value)} placeholder="0.00" /></span></label>
       <div className="conversion-result"><span>In Japanese yen</span><output aria-label="Amount in yen" aria-live="polite">{manual ?? '¥—'}</output></div></>}
       <small className="rate-note">{validRate ? `¥1 = ${symbol}${rate} · Your saved rate` : 'Set a positive exchange rate below to convert.'}</small>
-      {direction === 'JPY' && /^\d{1,12}$/.test(yenAmount) && <button className="primary" onClick={() => addItem(yenAmount)}>Add to shopping list</button>}
+      {direction === 'JPY' && /^\d{1,12}$/.test(yenAmount) && <button className="primary" onClick={() => addAndOpenList(yenAmount)}>Add to shopping list</button>}
     </section>
     <p className="cart-notice" aria-live="polite">{notice}</p>
     </dialog>
@@ -422,8 +434,8 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) void closeMenu();
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
-      <nav className="menu-links" aria-label="App tools"><button onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget</button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.06.1</p>
+      <nav className="menu-links" aria-label="App tools"><button aria-label="Open shopping list" onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget <span className="shopping-count">{shopping.items.length} {shopping.items.length === 1 ? 'item' : 'items'}</span></button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
+      <p className="build-version">Scanner build 2026.11.06.2</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>
@@ -460,9 +472,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     </details>
     <button className="translator-button" onClick={() => void closeMenu(() => premium.current?.showModal())}><span>Japanese text → English translator</span><span className="premium-tag">PREMIUM</span></button>
     </dialog>
-    <button className="cart-dock" onClick={() => cart.current?.showModal()} aria-label="Open shopping list">
-      <span>Shopping list · {shopping.items.length} {shopping.items.length === 1 ? 'item' : 'items'}<small>{remaining === undefined ? 'Tap to edit items & set a budget' : remaining < 0n ? `${formatCents(-remaining, symbol)} over budget` : `${formatCents(remaining, symbol)} left in your budget`}</small></span><strong>{totalLabel} <span aria-hidden="true">›</span></strong>
-    </button>
+
     <dialog ref={cart} className="sheet cart-sheet" aria-labelledby="cart-title">
       <div className="sheet-heading"><div><h2 id="cart-title">Shopping list</h2><small>Saved on this device</small></div><button aria-label="Close shopping list" onClick={() => cart.current?.close()}>×</button></div>
       <div className="export-actions"><button disabled={exportText === undefined} onClick={() => void copyList()}>Copy list</button><button disabled={exportText === undefined} onClick={saveList}>Save .txt</button></div>
