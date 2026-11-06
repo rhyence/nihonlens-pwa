@@ -232,7 +232,10 @@ test('reads a full menu and requires review before adding uncertain prices', asy
   await page.locator('.detected-button').click();
   await expect(page.getByRole('button', { name: 'Review possible ¥280 price', exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Review possible ¥640 price', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Review possible ¥580 price', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review possible ¥580 price', exact: true }).first()).toBeVisible();
+  const actualAmounts = (await page.locator('.detected-list strong').allTextContents()).map(text => text.split(' →')[0]);
+  const menuAmounts = new Set(['¥240', '¥280', '¥330', '¥340', '¥380', '¥430', '¥440', '¥480', '¥490', '¥530', '¥540', '¥570', '¥580', '¥630', '¥640']);
+  expect(actualAmounts.filter(amount => !menuAmounts.has(amount))).toEqual([]);
   console.log('Full-menu prices:', await page.locator('.detected-list button').allTextContents());
   await page.getByRole('dialog', { name: 'Detected prices', exact: true }).evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
   await page.screenshot({ path: 'test-results/full-menu-overlays.png' });

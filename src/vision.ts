@@ -1,6 +1,6 @@
 export type Box = { x: number; y: number; w: number; h: number };
 export type Reading = { text: string; box: Box; confidence?: number; uncertain?: boolean };
-export type Track = Reading & { id: number; seen: number; hits: number; misses?: number };
+export type Track = Reading & { id: number; seen: number; hits: number; misses?: number; pending?: string; pendingHits?: number };
 export function normalize(text: string) {
   return text.normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
@@ -90,7 +90,7 @@ export function fill(box: Box, sourceW: number, sourceH: number, viewW: number, 
     w: box.w * sourceW * scale, h: box.h * sourceH * scale };
 }
 
-function overlap(a: Box, b: Box) {
+export function overlap(a: Box, b: Box) {
   const w = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
   const h = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
   return w * h / (a.w * a.h + b.w * b.h - w * h || 1);
@@ -104,11 +104,15 @@ export class Tracker {
     const active = readings.map(reading => {
       let index = -1, bestOverlap = 0.3;
       unmatched.forEach((track, candidateIndex) => {
-        const score = track.text === reading.text ? overlap(track.box, reading.box) : 0;
+        const score = overlap(track.box, reading.box);
         if (score > bestOverlap) { index = candidateIndex; bestOverlap = score; }
       });
       if (index < 0) return { ...reading, id: ++this.id, seen: now, hits: 1 };
       const [old] = unmatched.splice(index, 1);
+      if (old.text !== reading.text) {
+        const pendingHits = old.pending === reading.text ? (old.pendingHits ?? 0) + 1 : 1;
+        if (pendingHits < 2) return { ...old, uncertain: true, seen: now, misses: 0, pending: reading.text, pendingHits };
+      }
       const box = { ...reading.box };
       for (const key of ['x', 'y', 'w', 'h'] as const) box[key] = old.box[key] * 0.8 + box[key] * 0.2;
       return { ...reading, box, id: old.id, seen: now, hits: old.hits + 1 };
@@ -149,4 +153,15 @@ export function placeLabel(box: Box, placed: Box[], height: number): Box | undef
     .sort((a, b) => Math.abs(a.y - box.y) - Math.abs(b.y - box.y))
     .find(candidate => placed.every(other => candidate.x + candidate.w + 2 <= other.x || other.x + other.w + 2 <= candidate.x ||
       candidate.y + candidate.h + 2 <= other.y || other.y + other.h + 2 <= candidate.y));
+}
+
+// Disagreeing amounts at the same physical row are not independent prices.
+export function withoutConflicts(readings: Reading[]): Reading[] {
+  return readings.filter(row => !readings.some(other => other !== row && yen(other.text) !== yen(row.text) &&
+    overlap(row.box, other.box) > 0.35));
+}
+
+export function mergePriceRows(first: Reading[], second: Reading[]): Reading[] {
+  const all = withoutConflicts([...first, ...second]);
+  return all.filter((row, i) => !all.slice(0, i).some(other => yen(other.text) === yen(row.text) && overlap(other.box, row.box) > 0.5));
 }

@@ -1,7 +1,8 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
 import { packCache, packPath } from './pack-info';
-import { confusedYenCandidates, possiblePriceCandidates, normalize, yen, yenReadings, type Reading } from './vision';
+import { confusedYenCandidates, possiblePriceCandidates, normalize, yen, yenReadings, overlap, withoutConflicts, type Reading } from './vision';
 import { enhance } from './image';
+import { priceRows } from './rows';
 
 function deadline<T>(work: Promise<T>, message: string, milliseconds = 45000) {
   let timer: ReturnType<typeof setTimeout>;
@@ -15,7 +16,7 @@ export class Engines {
   private ocr?: OCR;
   private closed = false;
 
-  async read(source: HTMLCanvasElement, attempt = 0): Promise<Reading[]> {
+  async read(source: HTMLCanvasElement, attempt = 0, detailed = false): Promise<Reading[]> {
     if (this.closed) throw new Error('OCR stopped.');
     if (!this.ocr) {
       const cached = await (await caches.open(packCache)).match(packPath + 'runtime/worker.min.js');
@@ -46,7 +47,7 @@ export class Engines {
       await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: numbersOnly ? '0123456789,¥￥円' : '' });
       const { data } = await deadline(worker.recognize(canvas, {}, { blocks: true }), 'Japanese OCR timed out.');
       const lines = (data.blocks ?? []).flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines));
-      const regions = numbersOnly ? lines.flatMap(line => line.words) : lines;
+      const regions = numbersOnly ? lines.flatMap(line => line.words) : priceRows(lines);
       return regions.flatMap(({ text, bbox, confidence }) => {
         const x0 = Math.max(0, bbox.x0);
         const y0 = Math.max(0, bbox.y0);
@@ -58,10 +59,14 @@ export class Engines {
       }).filter(reading => /\d/.test(reading.text)).slice(0, 120);
     };
 
-    const lines = await recognize(PSM.SPARSE_TEXT);
+    let lines = await recognize(PSM.SPARSE_TEXT);
+    if (detailed) {
+      const layout = await recognize(PSM.AUTO);
+      lines = [...lines, ...layout.filter(row => !lines.some(other => other.text === row.text && overlap(other.box, row.box) > 0.5))];
+    }
     const recovered: Reading[] = [];
     const confident = confusedYenCandidates(lines);
-    const candidates = [...confident, ...possiblePriceCandidates(lines).filter(candidate =>
+    const candidates = [...(detailed ? yenReadings(lines) : []), ...confident, ...possiblePriceCandidates(lines).filter(candidate =>
       !confident.some(other => other.box === candidate.box))].slice(0, 24);
     // A bounded backup pass looks for digits even when the yen glyph is lost.
     // Never expose bare numeric OCR directly: verify its crop and require review.
@@ -78,9 +83,12 @@ export class Engines {
         backupCandidates.add(candidate);
       }
     }
-    if (candidates.length) {
+    // Do not scan the same physical amount twice when both layouts find it.
+    const consistent = detailed ? withoutConflicts(candidates) : candidates;
+    const unique = consistent.filter((row, i) => !consistent.slice(0, i).some(other => other.text === row.text && overlap(row.box, other.box) > 0.5));
+    if (unique.length) {
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE, tessedit_char_whitelist: '0123456789,¥￥円' });
-      for (const candidate of candidates) {
+      for (const candidate of unique) {
         const box = candidate.box;
         const padding = Math.max(2, box.h * height * 0.1);
         const x = Math.max(0, Math.floor(box.x * width - padding));
@@ -89,28 +97,32 @@ export class Engines {
         const h = Math.min(height - y, Math.ceil(box.h * height + padding * 2));
         // Normalize overly magnified digits as well as small text.
         const votes = new Map<string, number>();
+        const sizes = new Set<string>();
         for (const targetHeight of [60, 40, 160]) {
           const zoom = Math.min(3, 1024 / w, targetHeight / h);
           const crop = document.createElement('canvas');
           crop.width = Math.max(1, Math.round(w * zoom));
           crop.height = Math.max(1, Math.round(h * zoom));
+          const size = `${crop.width}x${crop.height}`;
+          if (sizes.has(size)) continue;
+          sizes.add(size);
           crop.getContext('2d')!.drawImage(canvas, x, y, w, h, 0, 0, crop.width, crop.height);
           const { data } = await deadline(worker.recognize(crop), 'Price verification timed out.');
           const confirmed = normalize(data.text).replace(/[¥￥円,\s]/g, '');
           // An independent numeric read must agree on every digit before display.
           if (!/^\d{2,6}$/.test(confirmed) || BigInt(confirmed) < 10n) continue;
-          if (BigInt(confirmed) === yen(candidate.text)) { recovered.push(candidate); break; }
+          if (!detailed && BigInt(confirmed) === yen(candidate.text)) { recovered.push(candidate); break; }
           // Backup segmentation can include a size label or the currency as digits.
           // Correct it only when two independently scaled crop reads agree.
-          if (backupCandidates.has(candidate)) {
+          if ((detailed && BigInt(confirmed) === yen(candidate.text)) || backupCandidates.has(candidate)) {
             const count = (votes.get(confirmed) ?? 0) + 1;
             votes.set(confirmed, count);
-            if (count >= 2) { recovered.push({ ...candidate, text: '¥' + confirmed }); break; }
+            if (count >= 2) { recovered.push({ ...candidate, text: '¥' + confirmed, uncertain: candidate.uncertain || BigInt(confirmed) !== yen(candidate.text) }); break; }
           }
         }
       }
     }
-    return [...lines, ...recovered].map(reading => ({ ...reading, box: map(reading.box) }));
+    return [...(detailed ? [] : lines), ...recovered].filter((row, i, all) => !all.slice(0, i).some(other => other.text === row.text && overlap(other.box, row.box) > 0.5)).map(reading => ({ ...reading, box: map(reading.box) }));
   }
 
   async releaseOcr() {

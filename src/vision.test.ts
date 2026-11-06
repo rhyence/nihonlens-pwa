@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, placeLabel, yen, yenReadings } from './vision';
+import { confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, placeLabel, withoutConflicts, mergePriceRows, yen, yenReadings } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -151,4 +151,29 @@ it('matches identical stacked prices to the closest region instead of swapping r
   const moved = tracker.update([{ ...second, box: { ...second.box, y: .25 } }, first], 500, 1);
   expect(moved[0].id).toBe(initial[1].id);
   expect(moved[1].id).toBe(initial[0].id);
+});
+
+it('keeps an established row through one conflicting amount and switches only after agreement', () => {
+  const tracker = new Tracker();
+  const correct = { text: '¥480', box: { x: .1, y: .2, w: .3, h: .1 } };
+  const wrong = { ...correct, text: '¥4800' };
+  const [initial] = tracker.update([correct], 0, 1);
+  expect(tracker.update([wrong], 200, 1)[0]).toMatchObject({ id: initial.id, text: '¥480', uncertain: true });
+  expect(tracker.update([correct], 400, 1)[0].text).toBe('¥480');
+  expect(tracker.update([wrong], 600, 1)[0].text).toBe('¥480');
+  expect(tracker.update([wrong], 800, 1)[0]).toMatchObject({ id: initial.id, text: '¥4800' });
+});
+
+it('rejects conflicting crop amounts at the same row without merging adjacent prices', () => {
+  const first = { text: '¥540', box: { x: .2, y: .2, w: .2, h: .05 } };
+  const wrong = { ...first, text: '¥8540' };
+  const next = { ...first, text: '¥640', box: { ...first.box, y: .27 } };
+  expect(withoutConflicts([first, wrong, next])).toEqual([next]);
+});
+
+it('adds missing frozen rows without duplicates and withholds conflicting amounts', () => {
+  const a = { text: '¥480', box: { x: .1, y: .2, w: .3, h: .1 } };
+  const b = { text: '¥380', box: { ...a.box, y: .4 } };
+  expect(mergePriceRows([a], [a, b])).toEqual([a, b]);
+  expect(mergePriceRows([a], [{ ...a, text: '¥4800' }, b])).toEqual([b]);
 });

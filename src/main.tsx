@@ -4,7 +4,7 @@ import { Engines } from './engines';
 import { scanAngles } from './image';
 import { controlled, downloadPack, removePack, verifyInstalled } from './pack';
 import { packBytes } from './pack-info';
-import { convert, fill, placeLabel, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track, type Box } from './vision';
+import { convert, fill, placeLabel, mergePriceRows, FrameGate, pesosToYen, Tracker, yen, yenReadings, type Track, type Box } from './vision';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { cartTotal, convertedCents, formatCents, formatShopping, itemTotal, loadShopping, parseCents, shoppingKey, type Item } from './shopping';
 import './style.css';
@@ -233,7 +233,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     const scan = async () => {
       const frame = video.current;
       const ocr = engine.current;
-      if (document.visibilityState === 'visible' && !document.querySelector('dialog[open]') && frame?.videoWidth &&
+      if (document.visibilityState === 'visible' && !document.querySelector('dialog[open]:not([aria-labelledby=detected-title])') && frame?.videoWidth &&
           frame.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && ocr) {
         const image = frozen ? still.current! : frame;
         const w = frozen ? still.current!.width : frame.videoWidth;
@@ -247,13 +247,21 @@ function App({ initialSettings }: { initialSettings: Settings }) {
             canvas.width = Math.round(w * scale);
             canvas.height = Math.round(h * scale);
             context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            return yenReadings(await ocr.read(canvas, attempt));
+            const initial = yenReadings(await ocr.read(canvas, attempt));
+            if (!frozen || (!initial.length && attempt !== scanAngles.length - 1)) return initial;
+            // Finish the whole candidate list using a second layout and row crops,
+            // even when the initial pass has already found one or more prices.
+            setScanAttempt(scanAngles.length);
+            const rows = yenReadings(await ocr.read(canvas, attempt, true));
+            if (attempt > 1) return rows;
+            const contrastRows = yenReadings(await ocr.read(canvas, 2, true));
+            return mergePriceRows(rows, contrastRows);
           }, readings => {
             completed = readings.length > 0 || attempt === scanAngles.length - 1;
             if (!readings.length) attempt = frozen && attempt === 0 ? 2 : (attempt + 1) % scanAngles.length;
-            else if (!frozen && attempt === 0 && readings.some(reading => reading.uncertain)) attempt = 1;
+            else if (!frozen) attempt = attempt === 7 && readings.some(reading => reading.uncertain) ? 7 : (attempt + 1) % 3;
             setSource({ w, h });
-            setTracks(tracker.current.update(readings, performance.now(), 1));
+            setTracks(tracker.current.update(readings, performance.now(), frozen ? 1 : 2));
             setScanning(false);
             setScanned(completed);
           });
@@ -361,7 +369,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         const top = placement.y;
         return <button className="overlay price" key={track.id} style={{ width, left, top }} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}>{price}</button>;
       })}
-      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
+      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === scanAngles.length ? 'Checking each price row… You can put your phone down.' : scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
     </section>
     <div className="camera-controls">
       <button className={camera ? 'secondary' : 'primary'} disabled={starting || (!camera && !ready)} onClick={camera ? stopCamera : () => void startCamera()}>
@@ -415,7 +423,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget</button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.05.4</p>
+      <p className="build-version">Scanner build 2026.11.06.1</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>
