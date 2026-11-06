@@ -386,8 +386,9 @@ function App({ initialSettings }: { initialSettings: Settings }) {
         const top = placement.y;
         return <button className="overlay price" key={track.id} style={{ width, left, top }} aria-label={track.uncertain ? `Review possible ${track.text} price` : `Add ${track.text} to shopping list`} onClick={() => choosePrice(track)}>{price}</button>;
       })}
-      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === scanAngles.length ? 'Checking each price row… You can put your phone down.' : scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
+
     </section>
+      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === scanAngles.length ? 'Checking each price row… You can put your phone down.' : scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
 
 
     </div>
@@ -435,7 +436,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button aria-label="Open shopping list" onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget <span className="shopping-count">{shopping.items.length} {shopping.items.length === 1 ? 'item' : 'items'}</span></button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.06.3</p>
+      <p className="build-version">Scanner build 2026.11.06.4</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>

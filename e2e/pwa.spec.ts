@@ -112,7 +112,7 @@ test('scans live yen prices on the iPhone path after an offline reload', async (
   await expect(page.getByLabel('Frozen camera frame')).toBeVisible();
   await expect(page.locator('.overlay')).toHaveText('₱512.00', { timeout: 25_000 });
   await expect(page.getByText('Frozen prices ready. You can put your phone down.')).toBeVisible();
-  await page.screenshot({ path: 'test-results/camera-frozen.png' });
+  await page.screenshot({ path: 'test-results/camera-frozen.png', fullPage: true });
   await page.locator('.overlay').click();
   await expect(page.getByRole('dialog', { name: 'Shopping list', exact: true })).toBeVisible();
   await openShoppingList(page);

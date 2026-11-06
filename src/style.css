@@ -150,7 +150,7 @@ footer{text-align:center;font-size:11px;color:#7b887a;padding:14px 0}
 @media(prefers-reduced-motion:reduce){.sheet[open],.sheet[open]::backdrop{animation:none}}
 @media(prefers-reduced-motion:reduce){.sheet.menu-sheet[open]{animation:none}}
 
-.camera-progress{position:absolute;bottom:94px;left:12px;right:12px;z-index:1;background:#10251fe6;border-radius:10px;min-height:0;padding:8px 12px;pointer-events:none}
+.camera-progress{position:static;margin:0;padding:12px 16px;min-height:44px;background:#142923;border-top:1px solid #ffffff12}
 .scan-shortcuts{margin-top:24px}
 .screen-reader-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .detected-button{position:absolute;right:64px;top:12px;z-index:4;font-size:11px;padding:6px 10px;min-height:44px}
