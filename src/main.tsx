@@ -268,7 +268,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
           }, readings => {
             completed = readings.length > 0 || attempt === scanAngles.length - 1;
             if (!readings.length) attempt = frozen && attempt === 0 ? 2 : (attempt + 1) % scanAngles.length;
-            else if (!frozen) attempt = attempt === 7 && readings.some(reading => reading.uncertain) ? 7 : (attempt + 1) % 3;
+            else if (!frozen) attempt = attempt >= 7 && readings.some(reading => reading.uncertain) ? attempt : (attempt + 1) % 3;
             setSource({ w, h });
             setTracks(tracker.current.update(readings, performance.now(), frozen ? 1 : 2));
             setScanning(false);
@@ -388,7 +388,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
       })}
 
     </section>
-      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === scanAngles.length ? 'Checking each price row… You can put your phone down.' : scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
+      {camera && <p className="scan-status camera-progress" aria-live="polite">{camera ? frozen ? (scanned ? (tracks.length ? 'Frozen prices ready. You can put your phone down.' : 'No yen price found. Try moving closer, facing the sign, or avoiding glare.') : (scanAttempt === scanAngles.length ? 'Checking each price row… You can put your phone down.' : scanAttempt === 8 ? 'Checking colored text and uneven lighting… You can put your phone down.' : scanAttempt === 7 ? 'Trying backup number scan… You can put your phone down.' : scanAttempt > 0 ? 'Checking lighting and angles… You can put your phone down.' : 'Scanning frozen photo… You can put your phone down.')) : tracks.length ? 'Yen prices found' : scanning ? 'Scanning prices… Tap Freeze to hold this view.' : 'Point at a yen price. Freeze anytime to scan a still photo.' : ready ? 'Ready when you are. Start your camera to scan.' : busy ? 'Getting your scanner ready…' : 'Download the scanner below to get started.'}</p>}
 
 
     </div>
@@ -436,7 +436,7 @@ function App({ initialSettings }: { initialSettings: Settings }) {
     }}>
       <div className="sheet-heading"><h2 id="menu-title">Menu & settings</h2><button aria-label="Close menu" onClick={() => void closeMenu()}>×</button></div>
       <nav className="menu-links" aria-label="App tools"><button aria-label="Open shopping list" onClick={() => void closeMenu(() => cart.current?.showModal())}>Shopping list & budget <span className="shopping-count">{shopping.items.length} {shopping.items.length === 1 ? 'item' : 'items'}</span></button><button onClick={() => void closeMenu(() => converter.current?.showModal())}>Quick converter</button></nav>
-      <p className="build-version">Scanner build 2026.11.06.4</p>
+      <p className="build-version">Scanner build 2026.11.08.1</p>
       <div className="theme-setting"><span>Appearance</span><button className="theme-toggle" aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setSettings(previous => ({ ...previous, theme: previous.theme === 'dark' ? 'light' : 'dark' }))}>{settings.theme === 'dark' ? '☀️' : '🌙'}</button></div>
     <details className="panel disclosure">
       <summary>Exchange rate <span>{validRate ? `¥1 = ${symbol}${rate}` : 'Needs attention'}</span></summary>

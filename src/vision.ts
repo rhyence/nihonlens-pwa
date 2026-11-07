@@ -165,3 +165,12 @@ export function mergePriceRows(first: Reading[], second: Reading[]): Reading[] {
   const all = withoutConflicts([...first, ...second]);
   return all.filter((row, i) => !all.slice(0, i).some(other => yen(other.text) === yen(row.text) && overlap(other.box, row.box) > 0.5));
 }
+
+// OCR sometimes loses the two horizontal strokes of a yen prefix.
+// These remain candidates until a separate crop confirms the digits.
+export function damagedPrefixCandidates(readings: Reading[]): Reading[] {
+  return readings.flatMap(reading => {
+    const match = normalize(reading.text).match(/\\\s*(\d{2,6})\s*$/u);
+    return match ? [{ ...reading, text: '¥' + match[1], uncertain: true }] : [];
+  });
+}

@@ -194,9 +194,14 @@ test('recognizes three menu prices in a real photo and adds the chosen price', a
   await expect(page.locator('.menu-sheet')).not.toBeVisible();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Start camera' }).click();
-  await expect(page.locator('.overlay')).toHaveText(['₱192.00', '₱232.00', '₱152.00'], { timeout: 30_000 });
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  await expect(page.locator('.detected-list strong')).toHaveText(['¥480 → ₱192.00', '¥580 → ₱232.00', '¥380 → ₱152.00']);
+  await page.getByRole('button', { name: 'Close detected prices' }).click();
   await page.getByRole('button', { name: 'Freeze', exact: true }).click();
-  await expect(page.locator('.overlay')).toHaveText(['₱192.00', '₱232.00', '₱152.00'], { timeout: 30_000 });
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  await expect(page.locator('.detected-list strong')).toHaveText(['¥480 → ₱192.00', '¥580 → ₱232.00', '¥380 → ₱152.00']);
   await page.getByRole('button', { name: 'Add ¥580 to shopping list', exact: true }).click();
   await openShoppingList(page);
   await expect(page.getByLabel('Shopping total', { exact: true })).toHaveText('₱232.00');
@@ -382,4 +387,48 @@ for (const frameWidth of [544, 1088]) test(`recognizes prices from the horizonta
   await page.getByRole('button', { name: 'Close price review', exact: true }).click();
   await page.locator('.detected-button').click();
   for (const amount of ['240', '340']) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
+});
+
+for (const frameWidth of [547, 1094]) test(`recognizes prices from the red menu with glare at ${frameWidth}px`, async ({ page, context }) => {
+  const photo = process.env.NIHON_RED_MENU_IMAGE;
+  const fixture = process.env.NIHON_MODEL_DIR;
+  test.skip(!photo || !fixture, 'Requires the private phone capture and OCR model.');
+  await context.route('https://raw.githubusercontent.com/**/jpn.traineddata', route => route.fulfill({ path: join(fixture!, 'jpn.traineddata'), headers: { 'access-control-allow-origin': '*' } }));
+  await context.route('**/phone-regression.jpg', route => route.fulfill({ path: photo!, contentType: 'image/jpeg' }));
+  await page.addInitScript(frameWidth => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const image = new Image(); image.src = '/phone-regression.jpg'; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = frameWidth; canvas.height = Math.round(frameWidth * 825 / 547);
+      const paint = () => canvas.getContext('2d')!.drawImage(image, 22, 175, 547, 825, 0, 0, canvas.width, canvas.height);
+      const stream = canvas.captureStream(8); paint();
+      const timer = window.setInterval(paint, 100);
+      stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
+      return stream;
+    };
+  }, frameWidth);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Download scanner' }).click();
+  await expect(page.locator('.pack-status')).toHaveText('Offline scanner ready', { timeout: 90_000 });
+  await page.getByRole('button', { name: 'Close menu' }).click();
+  await expect(page.locator('.menu-sheet')).not.toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Start camera' }).click();
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  for (const amount of ['500', '250']) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
+  await page.getByRole('button', { name: 'Close detected prices' }).click();
+  await page.getByRole('button', { name: 'Freeze', exact: true }).click();
+  await expect(page.locator('.detected-button')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.detected-button').click();
+  console.log('Red menu:', await page.locator('.detected-list').textContent());
+  const detected = await page.locator('.detected-list strong').allTextContents();
+  expect(detected.map(text => text.split(' →')[0]).sort()).toEqual(['¥250', '¥500']);
+  await page.getByRole('button', { name: 'Close detected prices' }).click();
+  await page.screenshot({ path: `test-results/red-menu-${frameWidth}.png` });
+  await page.locator('.overlay.price').first().click();
+  await expect(page.getByRole('dialog', { name: 'Check this price', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close price review', exact: true }).click();
+  await page.locator('.detected-button').click();
+  for (const amount of ['500', '250']) await expect(page.locator('.detected-list')).toContainText('¥' + amount + ' →');
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, placeLabel, withoutConflicts, mergePriceRows, yen, yenReadings } from './vision';
+import { damagedPrefixCandidates, confusedYenCandidates, possiblePriceCandidates, convert, fill, FrameGate, pesosToYen, Tracker, placeLabel, withoutConflicts, mergePriceRows, yen, yenReadings } from './vision';
 import { installed } from './pack';
 import { packAssets, packPath } from './pack-info';
 
@@ -176,4 +176,11 @@ it('adds missing frozen rows without duplicates and withholds conflicting amount
   const b = { text: '¥380', box: { ...a.box, y: .4 } };
   expect(mergePriceRows([a], [a, b])).toEqual([a, b]);
   expect(mergePriceRows([a], [{ ...a, text: '¥4800' }, b])).toEqual([b]);
+});
+
+it('keeps damaged currency prefixes review-only and does not invent prices from bare numbers', () => {
+  const box = { x: .1, y: .2, w: .3, h: .1 };
+  const candidates = damagedPrefixCandidates(['\\500', 'ss\\250', '500', '50%', '\\500x'].map(text => ({ text, box })));
+  expect(candidates.map(row => row.text)).toEqual(['¥500', '¥250']);
+  expect(candidates.every(row => row.uncertain)).toBe(true);
 });

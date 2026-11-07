@@ -1,6 +1,6 @@
 import { createWorker, OEM, PSM, type Worker as OCR } from 'tesseract.js';
 import { packCache, packPath } from './pack-info';
-import { confusedYenCandidates, possiblePriceCandidates, normalize, yen, yenReadings, overlap, withoutConflicts, type Reading } from './vision';
+import { confusedYenCandidates, possiblePriceCandidates, damagedPrefixCandidates, normalize, yen, yenReadings, overlap, withoutConflicts, type Reading } from './vision';
 import { enhance } from './image';
 import { priceRows } from './rows';
 
@@ -66,12 +66,12 @@ export class Engines {
     }
     const recovered: Reading[] = [];
     const confident = confusedYenCandidates(lines);
-    const candidates = [...(detailed ? yenReadings(lines) : []), ...confident, ...possiblePriceCandidates(lines).filter(candidate =>
+    const candidates = [...(attempt === 8 ? damagedPrefixCandidates(lines) : []), ...(detailed ? yenReadings(lines) : []), ...confident, ...possiblePriceCandidates(lines).filter(candidate =>
       !confident.some(other => other.box === candidate.box))].slice(0, 24);
     // A bounded backup pass looks for digits even when the yen glyph is lost.
     // Never expose bare numeric OCR directly: verify its crop and require review.
     const backupCandidates = new Set<Reading>();
-    if (attempt === 7 && !yenReadings(lines).length) {
+    if ((attempt === 7 && !yenReadings(lines).length) || attempt === 8) {
       const numeric = await recognize(PSM.SPARSE_TEXT, true);
       for (const reading of numeric) {
         const digits = normalize(reading.text).replace(/[¥￥円,\s]/g, '');
